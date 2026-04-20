@@ -241,7 +241,8 @@ proof_genes_pt.cox <-
          SCORE = test_pred$.pred_linear_pred,
          HORMONE = HORMONE_THERAPY ,
          CHEMO = CHEMOTHERAPY,
-         SURGERY = BREAST_SURGERY
+         SURGERY = BREAST_SURGERY,
+         PAM50 = CLAUDIN_SUBTYPE
   ) %>% 
   dplyr::select(all_of(proof_genes),
                 surv_obj,
@@ -252,10 +253,12 @@ proof_genes_pt.cox <-
                 SCORE,
                 HORMONE,
                 CHEMO,
-                SURGERY) %>%  
+                SURGERY,
+                PAM50,
+                INTCLUST) %>%  
   na.omit()
 
-independent_prog <- coxph(surv_obj ~ HORMONE + CHEMO + SURGERY + MENO + HER2 + AGE + LYMPH + SCORE, 
+independent_prog <- coxph(surv_obj ~ HORMONE + CHEMO + SURGERY + MENO + HER2 + AGE + LYMPH + SCORE +  PAM50 + INTCLUST, 
                           data = proof_genes_pt.cox) %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
 
@@ -268,7 +271,7 @@ num_param_compare <- c(9:21)
 
 cat(paste0("Signature with ", length(coef_tbl$term), " genes (", paste(coef_tbl$term, collapse = ", "), ")"),
     paste0("The selected parameters were an alpha of ", best_params$mixture, " and a lambda of ", best_params$penalty),
-    paste0("The signature got a C-score of ", concordancia$concordance),
+    paste0("The signature got a C-score of ", concordance$concordance),
     paste0("HR of ", round(summary_cox$coefficients[2], 2), " (CI 95% of ", round(summary_cox$conf.int[3], 2), " - ", round(summary_cox$conf.int[4], 2), " pval ", summary_cox$coefficients[5], ")"),
     paste0("AUC at 3 years of ", round(auc[1,], 2), " at 5 years of ", round(auc[2,], 2), " at 6 years of ", round(auc[3,], 2), " and at 10 years of ", round(auc[4,], 2)),
     paste0("As an independence factor it has an HR of ", round(independent_prog$estimate[independent_prog$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog$conf.low[independent_prog$term == "SCORE"], 2), " - ", round(independent_prog$conf.high[independent_prog$term == "SCORE"], 2), " pval of ", independent_prog$p.value[independent_prog$term == "SCORE"], ")"),
@@ -279,3 +282,19 @@ cat(paste0(independent_prog$term[num_param_compare], " with its HR of ", round(i
     sep = ". "
     )
 independent_prog[num_param_compare, c(1, 2, 5, 6, 7)]
+
+
+
+independent_prog %>%
+  filter(estimate > 0.0001,
+         conf.high < 100) %>%
+  mutate(
+    term = reorder(term, estimate),
+    significant = p.value < 0.05
+  ) %>%
+  ggplot(aes(x = estimate, y = term, color = significant)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
+  geom_vline(xintercept = 1, linetype = "dashed") +
+  scale_x_log10() +
+  theme_minimal()
