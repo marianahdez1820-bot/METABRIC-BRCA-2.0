@@ -398,7 +398,7 @@ proof_genes_pt.tcga.cox <-
     AGE = as.numeric(Age_at_Initial_Pathologic_Diagnosis_nature2012),
     SCORE = tcga_results$.pred_linear_pred 
   ) %>%
-  dplyr::select(all_of(late_death.genes),
+  dplyr::select(all_of(proof_genes),
                 surv_obj,
                 LYMPH,
                 -PAM50,
