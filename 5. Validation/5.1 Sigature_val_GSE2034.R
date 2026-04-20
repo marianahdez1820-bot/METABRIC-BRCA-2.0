@@ -167,9 +167,9 @@ proof_genes_pt_gse2034 <- proof_genes_pt_gse2034[,colnames(proof_genes_pt_gse203
 # 4.3 Stop running if there are less genes in TCGA than on the signature
 
 if(length(common_genes_meta.gse2034) < length(proof_genes)){
-  stop(paste("There are missing genes in TCGA relative to the signature, missing ", length(proof_genes) - length(common_genes_meta.gse2034), " gene(s): "),  paste0(proof_genes[!(proof_genes %in% common_genes_meta.gse2034)], sep = ", ")) # Script stops here
+  stop(paste("There are missing genes in GSE2034 relative to the signature, missing ", length(proof_genes) - length(common_genes_meta.gse2034), " gene(s): "),  paste0(proof_genes[!(proof_genes %in% common_genes_meta.gse2034)], sep = ", ")) # Script stops here
 }else{
-  print("All genes in the signature are on TCGA")
+  print("All genes in the signature are on GSE2034")
 }
 
 
