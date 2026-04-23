@@ -8,8 +8,7 @@ label <- " For predicting survival in ER positive patients from METABIC cohort"
 
 # 1.- Preparing metadata --------------------------------------------------
 
-er_patients_surv <- alive_brca.death %>% 
-  filter(ER_IHC == "Positve")
+er_patients_surv <- metadata.ER_POS_SURV
 
 ml_metadata <- er_patients_surv
 
