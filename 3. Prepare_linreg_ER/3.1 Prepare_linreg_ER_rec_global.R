@@ -8,7 +8,7 @@ label <- "For predicting recurrence in ER+ patients from METABRIC cohort"
 
 # 1.- Preparing metadata --------------------------------------------------
 
-er_patients_recu <- metadata.ER_POS_REC  # metadata.ER_POS_SURV
+er_patients_recu <- metadata.ER_POS_REC  
 ml_metadata <- er_patients_recu
 
 # 1.2 List of genes to use (check dictionary below to understand the different variables that are used)
