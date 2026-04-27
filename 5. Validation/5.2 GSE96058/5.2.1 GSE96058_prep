@@ -152,18 +152,20 @@ common_genes_meta.gse96058 <- intersect(proof_genes, colnames(counts_data.gse960
 
 counts_data.gse96058_erpos <- counts_data.gse96058_erpos[, colnames(counts_data.gse96058_erpos) %in% common_genes_meta.gse96058]
 
-# 4.3 Stop running if there are less genes in TCGA than on the signature
+# 4.3 Stop running if there are less genes in GSE96058 than on the signature
 
 if(length(common_genes_meta.gse96058) < length(proof_genes)){
-  stop(paste("There are missing genes in TCGA relative to the signature, missing ", length(proof_genes) - length(common_genes_meta.gse96058), " gene(s): "),  paste0(proof_genes[!(proof_genes %in% common_genes_meta.gse96058)], sep = ", ")) # Script stops here
+  stop(paste("There are missing genes in GSE96058 relative to the signature, missing ", length(proof_genes) - length(common_genes_meta.gse96058), " gene(s): "),  paste0(proof_genes[!(proof_genes %in% common_genes_meta.gse96058)], sep = ", ")) # Script stops here
 }else{
-  print("All genes in the signature are on TCGA")
+  print("All genes in the signature are on GSE96058")
 }
 
 
-
+# 4.4 Keep only genes that are to be evaluated
 
 counts_data.gse96058_erpos <- counts_data.gse96058_erpos[ , common_genes_meta.gse96058]
+
+# 4.5 Object with surv object, all of the genes and the event columns
 
 proof_genes_pt.gse96058 <- 
   counts_data.gse96058_erpos %>% 
@@ -177,121 +179,4 @@ proof_genes_pt.gse96058 <-
                 title,
                 surv_obj) %>% 
   column_to_rownames("title")
-
-############################################################################
-############################################################################
-############################################################################
-############################################################################
-############################################################################
-############################################################################
-
-# 6.- Validation ----------------------------------------------------------
-
-
-# 6.1 Extract the trained recipe from the workflow
-
-trained_rec <- extract_recipe(final_fit)
-
-# 6.2 "Bake" the RNA-seq data and by that we mean to apply the same steps of the recipe to the new data
-
-proof_genes_pt.gse96058_baked <- bake(trained_rec, new_data = proof_genes_pt.gse96058)
-
-# 6.3 This is the predict phase
-
-gse96058_results <- predict(final_fit, new_data = proof_genes_pt.gse96058_baked, type = "linear_pred") %>%
-  bind_cols(proof_genes_pt.gse96058_baked)
-
-
-# 6.3 To get the p value
-
-validation_test <- coxph(Surv(EVENT_MON, EVENT_STAT) ~ .pred_linear_pred, data = gse96058_results)
-
-summary(validation_test)
-
-
-library(survminer)
-
-# Create risk groups based on the median of the predictions
-
-gse96058_results <- gse96058_results %>%
-  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < median(.pred_linear_pred), "High Risk", "Low Risk")))
-
-
-# Fit the KM curve
-
-km_fit <- survfit(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = gse96058_results)
-
-# Plot
-
-ggsurvplot(km_fit, 
-           data = gse96058_results, 
-           pval = TRUE, 
-           risk.table = TRUE,
-           title = "Validation in GSE2034 (Untreated Cohort)",
-           palette = c("#E41A1C", "#377EB8"))
-
-
-gse96058_results <- gse96058_results %>%
-  mutate(pred_z = scale(.pred_linear_pred))
-
-# Run Cox again
-gse96058_results$risk_group <- relevel(gse96058_results$risk_group, ref = "Low Risk")
-
-summary_gse96058 <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = gse96058_results))
-
-# Calculate the actual Concordance Index
-c_index_results.gse96058 <- concordance(Surv(EVENT_MON, EVENT_STAT) ~ .pred_linear_pred, 
-                                        data = gse96058_results)
-
-
-
-library(timeROC)
-
-# Area under the curve per time
-
-res_auc <- timeROC(T = gse96058_results$EVENT_MON,
-                   delta = gse96058_results$EVENT_STAT,
-                   marker = -gse96058_results$pred_z,
-                   cause = 1, # The event code
-                   times = c(36, 60, 72, 80), # 3, 5, and 6 years
-                   iid = TRUE)
-
-# View the AUC values
-
-res_auc_gse96058 <- res_auc$AUC %>% 
-  as.data.frame()
-
-
-# Cox multivariado con clinica
-
-proof_genes_pt_gse96058.cox <- 
-  proof_genes_pt.gse96058 %>% 
-  as.data.frame() %>% 
-  rownames_to_column("title") %>% 
-  left_join(metadata.gse96058_er_pos, by = "title", suffix = c("", ".y")) %>%
-  dplyr::select(-ends_with(".y")) %>% 
-  column_to_rownames("title") %>% 
-  mutate(HER2 = her2_pred_sgc, 
-         LYMPH = lymph_group,
-         PAM50 = pam50,
-         AGE = as.numeric(age),
-         KI67 = ki67_pred_sgc,
-         SCORE = gse96058_results$.pred_linear_pred,
-         RISK = gse96058_results$risk_group
-  ) %>% 
-  dplyr::select(all_of(proof_genes),
-                surv_obj,
-                LYMPH,
-                PAM50,
-                AGE,
-                HER2,
-                KI67,
-                SCORE,
-                RISK
-  ) %>% 
-  na.omit()
-
-independent_prog.gse96058 <- coxph(surv_obj ~ PAM50 + KI67 + HER2 + AGE + LYMPH + SCORE, 
-                                   data = proof_genes_pt_gse96058.cox) %>% 
-  tidy(exponentiate = TRUE, conf.int = TRUE)
 
