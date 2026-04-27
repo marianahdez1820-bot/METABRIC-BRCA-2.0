@@ -41,10 +41,7 @@ proof_genes_pt <-
   as.data.frame() %>% 
   rownames_to_column("PATIENT_ID") %>% 
   left_join(er_patients_recu, by = "PATIENT_ID") %>% 
-  column_to_rownames("PATIENT_ID") %>% 
-  mutate(EVENT_STAT = as.numeric(RECURR_STAT),
-         EVENT_MON = as.numeric(RFS_MONTHS)
-  ) %>%  # Turn to factor for machine learning
+  column_to_rownames("PATIENT_ID") %>%  # Turn to factor for machine learning
   dplyr::select(all_of(proof_genes),
                 EVENT_MON,
                 EVENT_STAT) %>% 
