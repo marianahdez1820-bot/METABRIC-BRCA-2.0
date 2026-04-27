@@ -1,0 +1,167 @@
+# This file is to validate the XGBoost model on GSE96058
+
+
+# 1.- Validation XGBoost ------------------------------------------------------
+
+# 1.1 Since there is no recipe we manually scale in this step
+
+proof_genes_pt.gse96058 <- 
+  proof_genes_pt.gse96058 %>% 
+  mutate(across(- c(EVENT_STAT, EVENT_MON, surv_obj), scale))
+
+# 1.2 Predict on GSE96058 based on the trained XGBoost model 
+
+gse96058_results <- predict(cox_model, newdata = proof_genes_pt.gse96058, type = "lp")
+
+# 1.3 Add the results as score in the data
+
+proof_genes_pt.gse96058$risk_score <- gse96058_results
+
+# 1.3.2 Survival cutpoint
+
+x <- surv_cutpoint(
+  data = proof_genes_pt.gse96058,
+  time = "EVENT_MON",
+  event = "EVENT_STAT",
+  variables = "risk_score"
+)
+
+# 1.3.3 Categorize based on cutpoint
+
+proof_genes_pt.gse96058$risk_group <- surv_categorize(x)$risk_score
+
+# 1.3.3.2 Create risk group as factor
+
+proof_genes_pt.gse96058 <- 
+  proof_genes_pt.gse96058 %>% 
+  mutate(risk_group = as.factor(risk_group))
+
+# 1.3.3.3 Relevel to low
+
+proof_genes_pt.gse96058$risk_group <- relevel(proof_genes_pt.gse96058$risk_group, ref = "low")
+
+# 1.4.1 Based on the survival object compare the risk_groups created previously
+
+fit_km <- survfit(Surv(proof_genes_pt.gse96058$EVENT_MON, proof_genes_pt.gse96058$EVENT_STAT) ~ risk_group, data = proof_genes_pt.gse96058)
+
+# 1.4.2 Plot
+
+ggsurvplot(km_fit, 
+           data = proof_genes_pt.gse96058, 
+           pval = TRUE, 
+           risk.table = TRUE,
+           
+           title = "Validation in GSE96058",
+           font.title = 30,
+           legend = "bottom",
+           font.legend = 22,
+           legend.title = "Risk group",
+           font.legend.title = 20,
+           legend.labs = c("High risk","Low risk"),
+           font.legend.labs = 18,
+           xlab = "Time (months)",
+           
+           ylim = c(0.7, 1),
+           xlim = c(0, 85),         # Zoom in
+           break.time.by = 10,      # X axis breaks
+           ggtheme = theme_minimal(), # ggplot2 theme
+           
+           linewidth = 3,                 # Line size
+           palette = c("#E41A1C", "#377EB8"), # Custom color palette
+           
+)
+
+summary(coxph(Surv(proof_genes_pt.gse96058$EVENT_MON, proof_genes_pt.gse96058$EVENT_STAT) ~ risk_group, data = proof_genes_pt.gse96058))
+
+
+# 2. Time-dependent ROC
+
+time_roc <- timeROC(
+  T = proof_genes_pt.gse96058$EVENT_MON,
+  delta = proof_genes_pt.gse96058$EVENT_STAT,
+  marker = proof_genes_pt.gse96058$risk_score,
+  cause = 1,
+  weighting = "marginal",
+  times = c(36, 60, 80),
+  iid = TRUE
+)
+
+
+# 3.- Results
+
+# 3.1 AUC results
+
+time_roc$AUC
+
+# 3.2 Invert score since the concordance index identifies it in a flipped manner
+
+proof_genes_pt.gse96058$risk_score <- proof_genes_pt.gse96058$risk_score * - 1
+
+# 3.3 Cox model
+
+summary_gse96058 <- summary(coxph(Surv(EVENT_MON, EVENT_STAT) ~ risk_score, data = proof_genes_pt.gse96058))
+
+# 3.4 Calculate the actual Concordance Index
+
+c_index_results.gse96058 <- concordance(Surv(EVENT_MON, EVENT_STAT) ~ risk_score, 
+                                        data = proof_genes_pt.gse96058)
+
+
+# 3.5 Prepare for multivariate cox
+
+proof_genes_pt_gse96058.cox <- 
+  proof_genes_pt.gse96058 %>% 
+  as.data.frame() %>% 
+  rownames_to_column("title") %>% 
+  left_join(metadata.gse96058_er_pos, by = "title", suffix = c("", ".y")) %>%
+  dplyr::select( - ends_with(".y")) %>% 
+  column_to_rownames("title") %>% 
+  mutate(HER2 = her2_pred_sgc, 
+         LYMPH = lymph_group,
+         PAM50 = pam50,
+         AGE = as.numeric(age),
+         KI67 = ki67_pred_sgc,
+         SCORE = gse96058_results,
+         RISK = proof_genes_pt.gse96058$risk_group
+  ) %>% 
+  dplyr::select(all_of(proof_genes),
+                surv_obj,
+                LYMPH,
+                PAM50,
+                AGE,
+                HER2,
+                KI67,
+                SCORE,
+                RISK
+  ) %>% 
+  na.omit()
+
+# 3.6 Multivariate cox
+
+cox_model.gse96058 <- coxph(surv_obj ~ PAM50 + KI67 + HER2 + AGE + LYMPH + SCORE, 
+                            data = proof_genes_pt_gse96058.cox)
+
+# 3.7 Tidy
+
+independent_prog.gse96058 <- cox_model.gse96058 %>% 
+  tidy(exponentiate = TRUE, conf.int = TRUE)
+
+# 3.8 Forest plot
+
+independent_prog.gse96058 %>%
+  filter(estimate > 0.0001,
+         conf.high < 100) %>%
+  mutate(
+    term = reorder(term, estimate),
+    significant = p.value < 0.05
+  ) %>%
+  ggplot(aes(x = estimate, y = term, color = significant)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
+  geom_vline(xintercept = 1, linetype = "dashed") +
+  scale_x_log10() +
+  theme_minimal()
+
+# 3.9 Boxplot
+
+boxplot(SCORE ~ PAM50, data = proof_genes_pt_gse96058.cox)
