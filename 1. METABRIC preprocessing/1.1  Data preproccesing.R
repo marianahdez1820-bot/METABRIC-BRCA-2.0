@@ -12,7 +12,9 @@ clinical_data <- read.delim(
   comment.char = "#",
   stringsAsFactors = FALSE)
 
+
 # 1.1.3 Check if rownames in clinical data have the same nomenclature as the colname sin microarray_data, if they differ by a point or dash (MB.0000 vs MB-0000) use
+
 clinical_data$PATIENT_ID <- gsub("-", ".", clinical_data$PATIENT_ID)
 
 # 1.1.4 Object without ENTREZ and HUGO columns
@@ -73,10 +75,10 @@ metadata  <-   metadata %>%
          SURVIVAL_STAT = as.numeric(gsub(":.*", "", metadata$OS_STATUS)), # 2.2 Add column of survival state where 1 is dead and 0 is alive
          RECURR_STAT = as.numeric(gsub(":.*", "", metadata$RFS_STATUS))) %>% 
   mutate(HER2_POS = ifelse(THREEGENE == "HER2+",
-                                    1,
-                                    0),
+                           1,
+                           0),
          HER2_POS = as.numeric(HER2_POS)
-         )
+  )
 
 
 
@@ -88,6 +90,7 @@ alive_brca.death <- metadata %>%
 
 
 # 2.5 Complete metadata only for ER+ patients
+
 metadata.ER_POS <- metadata %>% 
   as.data.frame() %>% 
   filter(
@@ -95,20 +98,19 @@ metadata.ER_POS <- metadata %>%
 
 
 # 2.5.1 Complete metadata only for ER+ useful for recurrence
+
 metadata.ER_POS_REC <- metadata.ER_POS %>% 
   as.data.frame() %>% 
   mutate(EVENT_STAT = as.numeric(RECURR_STAT),
-         EVENT_MON = as.numeric(RFS_MONTHS)) %>% 
-  drop_na()
+         EVENT_MON = as.numeric(RFS_MONTHS)) 
 
 # 2.5.2 Complete metadata only for ER+ patients who DIED OF BRCA or are alive (useful for survival)
 
 metadata.ER_POS_SURV <- metadata.ER_POS %>% 
   as.data.frame() %>% 
-  filter(VITAL_STATUS != "Died of Disease" & SURVIVAL_STAT == 0) %>% # Only remove the ones who died of other causes
+  filter(VITAL_STATUS != "Died of Disease" | SURVIVAL_STAT == 0) %>% # Only remove the ones who died of other causes
   mutate(EVENT_STAT = as.numeric(SURVIVAL_STAT),
-         EVENT_MON = as.numeric(OS_MONTHS)) %>% 
-  drop_na()
+         EVENT_MON = as.numeric(OS_MONTHS)) 
 
 
 # 2.5.3 Object with ER+ patients complete metadata that received HORMONAL THERAPY ONLY for patients who DIED of BRCA or are alive
@@ -117,7 +119,7 @@ metadata_hormone_SURV <- metadata.ER_POS_SURV %>%
   as.data.frame() %>% 
   mutate(HORMONE_THERAPY_STAT= ifelse(HORMONE_THERAPY == "YES", yes = 1, no = 0),
          HORMONE_THERAPY_STAT = as.numeric(HORMONE_THERAPY_STAT)) %>% 
-  filter(HORMONE_THERAPY_STAT== 1) 
+  filter(HORMONE_THERAPY_STAT == 1) 
 
 
 # 2.5.4 Object with ER+ patients complete metadata that received hormonal therapy 
@@ -126,5 +128,5 @@ metadata_hormone_REC <- metadata.ER_POS_REC %>%
   as.data.frame() %>% 
   mutate(HORMONE_THERAPY_STAT= ifelse(HORMONE_THERAPY == "YES", yes = 1, no = 0),
          HORMONE_THERAPY_STAT = as.numeric(HORMONE_THERAPY_STAT)) %>% 
-  filter(HORMONE_THERAPY_STAT== 1) 
-        
+  filter(HORMONE_THERAPY_STAT == 1) 
+
