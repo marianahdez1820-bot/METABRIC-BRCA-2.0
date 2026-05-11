@@ -140,7 +140,7 @@ proof_genes_pt.tcga <-
   proof_genes_pt.tcga %>% 
   rownames_to_column("sampleID") %>% 
   left_join(tcga_results, by = "sampleID", suffix = c("", ".drop")) %>%
-  select(-ends_with(".drop"))
+  dplyr::select(-ends_with(".drop"))
 
 # 4.1.2 Merge with metadata and select parameters to evaluate
 
