@@ -1,20 +1,17 @@
 
 # This file is to validate the signature obtained by lin regression on GSE96058 
 
+library(paletteer)
+library(patchwork)
+
+
 # 1.- Validation Lin Reg ----------------------------------------------------------
 
-# 1.1 Extract the trained recipe from the workflow
-
-trained_rec <- extract_recipe(final_fit)
-
-# 1.2 "Bake" the RNA-seq data and by that we mean to apply the same steps of the recipe to the new data
-
-proof_genes_pt.gse96058_baked <- bake(trained_rec, new_data = proof_genes_pt.gse96058)
 
 # 1.3 Predict
 
-gse96058_results <- predict(final_fit, new_data = proof_genes_pt.gse96058_baked, type = "linear_pred") %>%
-  bind_cols(proof_genes_pt.gse96058_baked)
+gse96058_results <- predict(final_fit, new_data = proof_genes_pt.gse96058, type = "linear_pred") %>%
+  bind_cols(proof_genes_pt.gse96058)
 
 # 1.4 To get the p value
 
@@ -31,18 +28,19 @@ library(survminer)
 
 # 2.1 Create risk groups based on the median of the predictions
 
+
 gse96058_results <- gse96058_results %>%
-  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < median(.pred_linear_pred), "High Risk", "Low Risk")))
+  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < true_cut$cutpoint[1,1], "High Risk", "Low Risk")))
 
 
 # 2.2 Fit the KM curve
 
-km_fit <- survfit(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = gse96058_results)
+km_fit.gse96058 <- survfit(Surv(EVENT_MON, EVENT_STAT) ~ risk_group, data = gse96058_results)
 
 # 2.3 Plot
 
 
-ggsurvplot(km_fit, 
+ggsurvplot(km_fit.gse96058, 
            data = gse96058_results, 
            pval = TRUE, 
            risk.table = TRUE,
@@ -91,17 +89,89 @@ library(timeROC)
 
 # 2.6 Area under the curve per time
 
-res_auc <- timeROC(T = gse96058_results$EVENT_MON,
+res_auc_gse96058 <- timeROC(T = gse96058_results$EVENT_MON,
                    delta = gse96058_results$EVENT_STAT,
-                   marker = -gse96058_results$pred_z,
+                   marker = -gse96058_results$.pred_linear_pred,
                    cause = 1, # The event code
-                   times = c(36, 60, 72, 80), # 3, 5, and 6 years
+                   times = c(12, 36, 60, 72), # 3, 5, and 6 years
                    iid = TRUE)
 
-# 2.7 View the AUC values
 
-res_auc_gse96058 <- res_auc$AUC %>% 
-  as.data.frame()
+
+# 2.7 Combine all time points into a long dataframe
+
+plot_roc.gse96058 <- map_df(c(12, 36, 60, 72), function(i) { # This functions as a for loop
+  time_label <- paste0("t=", i)
+  
+  data.frame(
+    FP = res_auc_gse96058$FP[, time_label],
+    TP = res_auc_gse96058$TP[, time_label],
+    Time = factor(i),
+    data_set = "GSE96058"
+  )
+})
+
+gse96058_results <- 
+  gse96058_results %>% 
+  mutate(EVENT_STAT = factor(EVENT_STAT))
+
+global_roc.gse96058 <- roc_curve(gse96058_results,
+                        EVENT_STAT,
+                        .pred_linear_pred
+                        ) %>%
+  mutate(label = "GSE96058")
+
+# 2.8 Extract AUC and SE for each time point
+
+auc_table.gse96058 <- data.frame(
+  Time = c(12, 36, 60, 72),
+  `AUC (%)` = round(as.numeric(res_auc_gse96058$AUC[c("t=36", "t=60", "t=72", "t=80")]), 4),
+  `SE` = res_auc_gse96058$times
+)
+
+
+# 2.8.2 Labels
+
+legend_labels.gse96058 <- paste0("t=", auc_table.gse96058$Time, " (AUC: ", 100 * auc_table.gse96058$AUC..., "%)")
+
+# 2.8.3 Labels for faceted plot
+
+facet_labels.gse96058 <- data.frame(
+  Time = factor(c(12, 36, 60, 72)),
+  AUC_Text = paste0("AUC: ", 100 * round(as.numeric(res_auc_gse96058$AUC[1:4]), 3), "%"),
+  data_set = "GSE96058"
+)
+
+# 2.9 Plot with overlap
+
+ggplot(plot_roc.gse96058, aes(x = FP, y = TP, color = Time)) +
+  geom_line(linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  theme_minimal() +
+  labs(
+    title = "Time-Dependent ROC Curves",
+    subtitle = "Comparing model performance across different horizons",
+    x = "1 - Specificity (FP)",
+    y = "Sensitivity (TP)",
+    color = "Time Point"
+  ) +
+  scale_color_viridis_d(labels = legend_labels.gse96058) 
+
+# 2.9.2 Plot with facet
+
+ggplot(plot_roc.gse96058, aes(x = FP, y = TP)) +
+  geom_line(color = "darkblue", linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  facet_wrap(~ Time, ncol = 2) +
+  theme_bw() +
+  labs(
+    title = "ROC Curves by Time Point",
+    x = "False Positive Rate",
+    y = "True Positive Rate"
+  ) +
+  geom_text(data = facet_labels.gse96058, 
+            aes(x = 0.75, y = 0.1, label = AUC_Text), 
+            size = 4, fontface = "bold")
 
 
 # 3.- Independence test ---------------------------------------------------
@@ -121,7 +191,9 @@ proof_genes_pt_gse96058.cox <-
          AGE = as.numeric(age),
          KI67 = ki67_pred_sgc,
          SCORE = gse96058_results$.pred_linear_pred,
-         RISK = gse96058_results$risk_group
+         RISK = gse96058_results$risk_group,
+         HORMONE = endocrine_tx,
+         CHEMO = chemo_tx
   ) %>% 
   dplyr::select(all_of(proof_genes),
                 surv_obj,
@@ -131,13 +203,20 @@ proof_genes_pt_gse96058.cox <-
                 HER2,
                 KI67,
                 SCORE,
-                RISK
+                RISK,
+                EVENT_STAT,
+                EVENT_MON,
+                HORMONE,
+                CHEMO
   ) %>% 
   na.omit()
 
+summary(coxph(surv_obj ~AGE + LYMPH + SCORE, 
+              data = proof_genes_pt_gse96058.cox))
+
 # 3.2 Multivariate cox
 
-cox_model.gse96058 <- coxph(surv_obj ~ PAM50 + KI67 + HER2 + AGE + LYMPH + SCORE, 
+cox_model.gse96058 <- coxph(surv_obj ~ PAM50 + KI67 + HER2 + AGE + LYMPH + CHEMO + HORMONE+ SCORE, 
                             data = proof_genes_pt_gse96058.cox)
 
 independent_prog.gse96058 <- cox_model.gse96058 %>% 
@@ -150,13 +229,12 @@ summary(cox_model.gse96058)
 
 # 4.1 Index numbers to use of the multivariate cox
 
-num_param_compare <- c(1:11)
+num_param_compare <- c(1:15)
 
 # 4.2 Concatenate text with desired results
 
 cat(paste0("The signature on GSE96058 got a C-score of ", round(c_index_results.gse96058$concordance, 2)),
     paste0("an HR of ", round(summary_gse96058$coefficients[2], 2), " (CI 95% of ", round(summary_gse96058$conf.int[3], 2), " - ", round(summary_gse96058$conf.int[4], 2), " pval ", summary_gse96058$coefficients[5], ")"),
-    paste0("AUC at 3 years of ", round(res_auc_gse96058[1,], 2), " at 5 years of ", round(res_auc_gse96058[2,], 2), " and at 6 years of ", round(res_auc_gse96058[3,], 2)),
     paste0("As an independence factor it has an HR of ", round(independent_prog.gse96058$estimate[independent_prog.gse96058$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog.gse96058$conf.low[independent_prog.gse96058$term == "SCORE"], 2), " - ", round(independent_prog.gse96058$conf.high[independent_prog.gse96058$term == "SCORE"], 2), " pval of ", independent_prog.gse96058$p.value[independent_prog.gse96058$term == "SCORE"], ")"),
     sep = ". "
 )
@@ -183,6 +261,311 @@ independent_prog.gse96058 %>%
 
 # 4.4 Boxplot comparing to PAM50
 
-boxplot(SCORE ~ PAM50, data = proof_genes_pt_gse96058.cox)
+
+ggplot(proof_genes_pt_gse96058.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
+  geom_boxplot() +
+  scale_fill_paletteer_d("ggsci::deep_purple_material")
+
+ggplot(proof_genes_pt_gse96058.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
+  geom_boxplot() +
+  scale_fill_paletteer_d("ggsci::deep_purple_material") +
+  facet_wrap(~ EVENT_STAT, 
+             labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased")))
+
+# 4.5 Wilcoxon test for PAM50
+
+results_gse96058 <- proof_genes_pt_gse96058.cox %>%
+  dplyr::select(EVENT_STAT, PAM50, SCORE) %>% 
+  group_by(PAM50) %>%
+  group_modify(~ {
+    test <- wilcox.test(SCORE ~ EVENT_STAT, data = .)
+    tidy(test)
+  }) %>%
+  ungroup() %>% 
+  mutate(adj_p_value = p.adjust(p.value, method = "holm"))
 
 
+print(results_gse96058$adj_p_value)
+
+# 4.5.2 Create table with results
+
+for (i in 1:5) {
+  x <- paste0(results_gse96058$PAM50[i], " with an adjusted p value of ", results_gse96058$adj_p_value[i], ", ")
+  cat(x, sep = ", ")
+}
+
+# 4.6 Kruskal wallis
+
+kruskal.test(SCORE ~  CHEMO, data = proof_genes_pt_gse96058.cox)
+
+# 4.6.2 Long format to visualize how the scorescores patient based on event an treatment
+
+proof_genes_long.gse96058 <- proof_genes_pt_gse96058.cox %>%
+  mutate(HORMONE = factor(HORMONE),
+         CHEMO = factor(CHEMO)) %>% 
+  pivot_longer(
+    cols = c(HORMONE, CHEMO), 
+    names_to = "Parameter",
+    values_to = "Value"
+  )
+
+
+# 4.6.3  Plot
+
+ggplot(proof_genes_long.gse96058,
+       aes(
+         y = SCORE,
+         x = Value,
+         fill = factor(Value, labels = c("0" = "Untreated", "1" = "Treated"))
+       )) +
+  geom_boxplot() +
+  facet_wrap(~ Parameter + EVENT_STAT, scales = "free_x") + # 'free_x' allows different labels for each box
+  scale_fill_paletteer_d("LaCroixColoR::Berry") +
+  theme_minimal() +
+  labs(x = "Treatment/Parameter Value",
+       fill = "Treated") +
+  theme(
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12),
+    strip.text = element_text(size = 13),
+    legend.text = element_text(size = 11),
+    legend.title = element_text(size = 12)
+  )
+
+summary(coxph(surv_obj ~ SCORE * CHEMO, data = proof_genes_pt_gse96058.cox))
+
+# 4.7 Wilcoxon on treatment
+
+results2 <- proof_genes_pt_gse96058.cox %>%
+  dplyr::select(EVENT_STAT, HORMONE, SCORE) %>% 
+  group_by(HORMONE) %>%
+  group_modify(~ {
+    test <- wilcox.test(SCORE ~ EVENT_STAT, data = .)
+    tidy(test)
+  }) %>%
+  ungroup() %>% 
+  mutate(adj_p_value = p.adjust(p.value, method = "BH"))
+
+print(results2)
+
+# 4.7.2 Plot score based on treatment faceted by event
+
+# 4.7.2.2 Long format
+
+proof_genes_pt_gse96058.long <- 
+  proof_genes_pt_gse96058.cox %>% 
+  pivot_longer(cols = c(HORMONE, CHEMO),
+               names_to = "Parameters",
+               values_to = "Values")
+
+# 4.7.2.3 Plot
+
+ggplot(proof_genes_pt_gse96058.long,
+       aes(
+         x = factor(Values),
+         y = SCORE,
+         fill = factor(
+           Values,
+           levels = c(0, 1),
+           labels = c("Alive", "Deceased")
+         )
+       )) +
+  geom_boxplot() +
+  facet_wrap(~ Parameters + EVENT_STAT,
+             scales = "free_x",
+             labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) +
+  scale_fill_paletteer_d("palettesForR::Pastels") +
+  theme_gray(base_size = 18) +
+  labs(fill = "Vital status")
+
+
+
+# 5.- Outlier analysis ----------------------------------------------------
+
+
+# 5.1 Add a row ID so we can find these patients later
+
+id <- proof_genes_pt.gse96058 %>% 
+  rownames_to_column("title")
+
+# 5.2 Add to the final fit a column of id and keep
+
+model_diagnostics <- augment(
+  final_fit, 
+  new_data = id, 
+  eval_time = c(12, 36, 60, 72) # Times in months (3, 5, 10 years)
+)
+
+list <- list()
+
+for (i in c(12, 36, 60, 72)) {
+  
+  
+  
+  eval_time <- i
+  
+  # 5.1 Unnest the predictions and find the biggest outliers on a set point and event
+  
+  outliers <- model_diagnostics %>%
+    dplyr::select(title, EVENT_MON, EVENT_STAT, .pred) %>%
+    unnest(.pred) %>%
+    filter(.eval_time == eval_time) %>% 
+    arrange(desc(.pred_survival)) # Siunce our signature as it goes up, the predicted mortality goes down we see which patients died early who were predicted to die late or survive
+  
+  
+  # 5.2 Object with metadata and score characteristics
+  
+  outlier_summary <- outliers %>%
+    inner_join(metadata.gse96058_er_pos, by = "title", suffix = c("", ".drop")) %>%
+    dplyr::select(
+      title, 
+      .pred_survival, 
+      EVENT_STAT, 
+      EVENT_MON, 
+      pam50, 
+      lymph_group, 
+      nhg,
+      tumor_size,
+      .eval_time
+    ) 
+  
+  
+  # 5.3 Create bias score for defined time
+  
+  outliers_bias <- outlier_summary %>%
+    mutate(
+      bias_score = (((1 - EVENT_STAT) - .pred_survival) ^ 2) * (EVENT_MON - .eval_time) * ( 1 - 2 * EVENT_STAT)
+      # If they lived but where scored low then it will have a high bias score (1 - 0.2 = 0.8) and if they died but where scored high they will also have a high absolute bias (abs(0 - 0.9) = 0.9)
+    ) %>%
+    arrange(desc(bias_score))
+  
+  # 5.4 Identify the highest bias patients
+  
+  # 5.4.1 Obtain mean and sd and then filter baed on patients higher than determined SD
+  
+  extreme_outliers <- 
+    outliers_bias %>% 
+    mutate(mean_bias = mean(bias_score),
+           sd_bias = sd(bias_score)) %>% 
+    filter(bias_score > (mean_bias + 2 * sd_bias))
+  
+  # 5.4.2 Obtain their IDs
+  
+  top_bias_ids <- extreme_outliers$title
+  
+  print(length(top_bias_ids))
+  # 5.4.3 Identify different characteristics of patients identified as top bias
+  
+  print(outliers_bias %>%
+          filter(title %in% top_bias_ids) %>% 
+          group_by(pam50, EVENT_STAT) %>%
+          summarise(
+            count = n(),
+            avg_pred_survival = mean(.pred_survival),
+            avg_event_time = mean(EVENT_MON)
+          ) %>%
+          arrange(desc(count))
+  )
+  # 5.5.1 Add a column identifying patients as top bias or not
+  
+  outliers <- 
+    outliers %>% 
+    mutate(quadrant = case_when(
+      title %in% top_bias_ids & EVENT_STAT == 0 ~ 2,
+      title %in% top_bias_ids & EVENT_STAT == 1 ~ 1,
+      TRUE ~ 0
+    ))
+  
+  print(outliers %>% 
+          group_by(EVENT_STAT) %>% 
+          dplyr::count(quadrant))
+  
+  # 5.5.2 Plot
+  
+
+  # 5.5.2.1 Plot colored by EVENT_STAT
+  
+  p1 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(EVENT_STAT), shape = factor(EVENT_STAT))) +
+    geom_point(size = 2, alpha = 0.7) + # Increased size and opacity
+    stat_ellipse(type = "t", level = 0.95) + # Adds 95% confidence ellipse
+    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
+    scale_color_viridis_d() + 
+    labs(
+      title = "Event Status Distribution",
+      x = paste0("Actual Event Time (Months)", eval_time),
+      y = "Predicted Survival",
+      color = "Event Stat",
+      shape = "Event Stat"
+    ) +
+    theme_linedraw()
+  
+  # 5.5.2.2 Plot colored by quadrant
+  
+  p2 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(quadrant), shape = factor(EVENT_STAT))) +
+    geom_point(size = 2, alpha = 0.7) +
+    stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) + 
+    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
+    scale_color_viridis_d() + 
+    labs(
+      title = "Quadrant Analysis",
+      x = paste0("Actual Event Time (Months)", eval_time),
+      y = "Predicted Survival",
+      color = "Quadrant",
+      shape = "Event Stat"
+    ) +
+    theme_linedraw()
+  
+  # 5.5.3 Combine and stack
+  
+  print( p1 + p2)
+  
+  list[[i]] <- top_bias_ids
+  
+}
+
+
+# 5.6 Obtain patients found on all of the iterations of the for loop as top bias patients
+
+bias_interesct <- intersect(intersect(list[[12]], list[[36]]) , intersect(list[[60]], list[[72]]))
+
+# 5.6.2 Similar but all unique so even if they appear once we register them
+
+bias_diff_id <- unique(c(list[[12]], list[[36]] , list[[60]], list[[72]]))
+
+# 5.7 Observe characteristics of the bias_intersect patients
+
+outliers_bias %>%
+  filter(title %in% bias_diff_id) %>% 
+  group_by(EVENT_STAT, nhg) %>%
+  summarise(
+    count = n(),
+    avg_pred_survival = mean(.pred_survival),
+    avg_event_time = mean(EVENT_MON)
+  ) %>%
+  arrange(desc(count))
+
+
+
+
+# 6.- Other evaluations ---------------------------------------------------
+
+# 6.1 Brier score
+
+eval_results.gse96058 <- final_fit %>%
+  augment(new_data = proof_genes_pt.gse96058, eval_time = c(36, 60, 120)) 
+
+# 6.2 Calculate Brier Score
+
+performance.gse96058 <- eval_results.gse96058 %>%
+  brier_survival(truth = surv_obj, .pred)
+
+print(performance.gse96058)
+
+# 6.3 Martingale and Schofeild residuals
+
+cox.zph(cox_model.gse96058)
+
+ggcoxzph(cox.zph(cox_model.gse96058))
+
+ggcoxdiagnostics(cox_model.gse96058, type = "martingale",
+                 linear.predictions = FALSE, ggtheme = theme_bw())
