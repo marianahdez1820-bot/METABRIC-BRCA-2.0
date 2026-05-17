@@ -84,6 +84,80 @@ res_auc_gse2034 <- res_auc$AUC %>%
 
 print(res_auc$AUC)
 
+# 6.9.3 Combine all time points into a long dataframe
+
+plot_roc.gse2034 <- map_df(c(12, 36, 60, 120), function(i) { # This functions as a for loop
+  time_label <- paste0("t=", i)
+  
+  data.frame(
+    FP = res_auc$FP[, time_label],
+    TP = res_auc$TP[, time_label],
+    Time = factor(i),
+    data_set = "GSE2034"
+  )
+})
+gse2034_results <- 
+  gse2034_results %>% 
+  mutate(EVENT_STAT = factor(EVENT_STAT))
+
+global_roc.gse2034 <- roc_curve(gse2034_results,
+                                EVENT_STAT,
+                                .pred_linear_pred) %>%
+  mutate(label = "GSE2034")
+
+
+# 6.9.4 Extract AUC and SE for each time point
+
+auc_table.gse2034 <- data.frame(
+  Time = c(12, 36, 60, 120),
+  `AUC (%)` = round(as.numeric(res_auc$AUC[c("t=12", "t=36", "t=60", "t=120")]), 4),
+  `SE` = res_auc$times
+)
+
+# 6.9.5 Labels
+
+legend_labels.gse2034 <- paste0("t=", auc_table.gse2034$Time, " (AUC: ", 100 * auc_table.gse2034$AUC..., "%)")
+
+# 6.9.6 Labels for faceted plot
+
+facet_labels.gse2034 <- data.frame(
+  Time = factor(c(12, 36, 60, 120)),
+  AUC_Text = paste0("AUC: ", 100 * round(as.numeric(res_auc$AUC[1:4]), 3), "%"),
+  data_set = "GSE2034"
+)
+
+# 6.9.7 Plot with overlap
+
+ggplot(plot_roc.gse2034, aes(x = FP, y = TP, color = Time)) +
+  geom_line(linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  theme_minimal() +
+  labs(
+    title = "Time-Dependent ROC Curves",
+    subtitle = "Comparing model performance across different horizons",
+    x = "1 - Specificity (FP)",
+    y = "Sensitivity (TP)",
+    color = "Time Point"
+  ) +
+  scale_color_viridis_d(labels = legend_labels.gse2034) 
+
+# 6.9.8 Plot with facet
+
+ggplot(plot_roc.gse2034, aes(x = FP, y = TP)) +
+  geom_line(color = "darkblue", linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
+  facet_wrap(~ Time, ncol = 2) +
+  theme_bw() +
+  labs(
+    title = "ROC Curves by Time Point",
+    x = "False Positive Rate",
+    y = "True Positive Rate"
+  ) +
+  geom_text(data = facet_labels.gse2034, 
+            aes(x = 0.75, y = 0.1, label = AUC_Text), 
+            size = 4, fontface = "bold")
+
+
 
 # Multivariate regression cox with clinical data
 
