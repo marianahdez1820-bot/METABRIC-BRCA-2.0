@@ -58,11 +58,19 @@ ggsurvplot(km_fit,
 gse2034_results <- gse2034_results %>%
   mutate(pred_z = scale(.pred_linear_pred))
 
+gse2034_split <- survSplit(
+  formula = Surv(EVENT_MON, EVENT_STAT) ~ ., 
+  data = gse2034_results,
+  cut = 70, 
+  episode = "time_group",
+  id = "patient_id"
+)
+
 # Run Cox again
-gse2034_results$risk_group <- relevel(gse2034_results$risk_group, ref = "Low Risk")
+gse2034_split$risk_group <- relevel(gse2034_split$risk_group, ref = "Low Risk")
 
 
-summary_gse2034 <- summary(coxph(Surv(EVENT_MON,  EVENT_STAT) ~ risk_group, data = gse2034_results))
+summary_gse2034 <- summary(coxph(Surv(EVENT_MON,  EVENT_STAT) ~ risk_group * strata(time_group), data = gse2034_split))
 
 
 library(timeROC)
@@ -83,7 +91,7 @@ auc_gse2034 <- res_auc.gse2034$AUC %>%
 
 # View the AUC values
 
-print(res_auc$AUC)
+print(auc_gse2034)
 
 
 gse2034_results <- 
@@ -151,14 +159,34 @@ proof_genes_pt.gse2034.cox <-
   ) %>% 
   dplyr::select(all_of(proof_genes),
                 surv_obj,
-                SCORE
+                SCORE,
+                EVENT_MON,
+                EVENT_STAT
   ) %>% 
   na.omit()
 
-independent_prog.gse2034 <- coxph(surv_obj ~ SCORE, 
-                                  data = proof_genes_pt.gse2034.cox) %>% 
-  tidy(exponentiate = TRUE, conf.int = TRUE)
+gse2034_split.cox <- survSplit(
+  formula = Surv(EVENT_MON, EVENT_STAT) ~ ., 
+  data = proof_genes_pt.gse2034.cox,
+  cut = 70, 
+  episode = "time_group",
+  id = "patient_id"
+)
 
+# 2. Fit the model with the interaction
+
+cox_model.gse2034 <- coxph(
+  Surv(tstart, EVENT_MON, EVENT_STAT) ~ SCORE:strata(time_group), 
+  data = gse2034_split.cox
+)
+
+
+cox_model.gse2034 <- coxph(surv_obj ~ SCORE:strata(time_group), 
+                                  data = gse2034_split.cox) 
+
+independent_prog.gse2034 <- 
+  cox_model.gse2034 %>% 
+  tidy(exponentiate = TRUE, conf.int = TRUE)
 
 
 num_param_compare <- c(9:21)
@@ -189,7 +217,11 @@ independent_prog.gse2034 %>%
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
-  theme_minimal()
+  theme_classic() +
+  scale_y_discrete(labels = c(
+    "SCORE:strata(time_group)time_group=1" = "Time Group 1",
+    "SCORE:strata(time_group)time_group=2" = "Time Group 2"
+  ))
 
 
 # 6.- Outlier analysis ----------------------------------------------------
@@ -201,7 +233,7 @@ independent_prog.gse2034 %>%
 
 gse2034_results <- 
   gse2034_results %>% 
-  mutate(EVENT_STAT = as.numeric(EVENT_STAT))
+  mutate(EVENT_STAT = as.numeric(as.character(EVENT_STAT)))
 
 # 6.1.2 Augment on different time points
 
@@ -348,6 +380,8 @@ performance.gse2034 <- eval_results.gse2034 %>%
 print(performance.gse2034)
 
 # 7.2 Martingale and Schofeild residuals
+
+
 
 cox.zph(cox_model.gse2034)
 
