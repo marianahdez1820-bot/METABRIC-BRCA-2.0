@@ -180,3 +180,6 @@ proof_genes_pt.gse96058 <-
                 surv_obj) %>% 
   column_to_rownames("title")
 
+proof_genes_pt.gse96058 <- 
+  proof_genes_pt.gse96058 %>% 
+  mutate(across(- c(EVENT_MON, EVENT_STAT, surv_obj), scale))
