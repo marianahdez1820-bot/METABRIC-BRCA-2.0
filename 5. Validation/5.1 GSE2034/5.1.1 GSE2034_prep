@@ -7,6 +7,7 @@ library(limma)
 library(hgu133plus2.db)
 library(gridExtra)
 library(readr)
+library(dplyr)
 
 
 
@@ -21,7 +22,7 @@ library(readr)
 
 # 1.1.3 Listing .cel files
 
-cel_files <- list.celfiles("D:/gse2034/GSE2034/", full.names = TRUE, listGzipped = TRUE)
+cel_files <- list.celfiles("~/Documents/Servicio_Social/R.project/MyRProject/METABRIC_project/Validation GSE2034 data/GSE2034", full.names = TRUE, listGzipped = TRUE)
 
 # 1.1.4 Reading in cel files
 
@@ -31,7 +32,7 @@ raw_data <- pre_raw_data
 
 # 1.2 metadata_GSE2034 
 
-pre_metadata <- read.delim("C:/R/METABRIC/Validation/GSE2034/Metadatos/GSE2034_metadata", sep = ",")
+pre_metadata <- read.delim("~/Documents/Servicio_Social/R.project/MyRProject/METABRIC_project/Validation GSE2034 data/GSE2034_metadata", sep = ",")
 metadata_gse.2034 <- pre_metadata
 
 #> pData of raw_data initially only contains the id for the counts and an index
@@ -62,9 +63,7 @@ metadata_gse.2034  <- metadata_gse.2034  %>%
                 ER_STAT,
                 id,
                 BRAIN_REL,
-                LYMPH
-                
-  )
+                LYMPH)
 
 # 3.2 Object with the names of each file
 
@@ -86,7 +85,7 @@ pData(raw_data) <-
   column_to_rownames("comp_file_name") 
 
 
-metadata_gse.2034  <- pData(raw_data) # Make shure they have the same data this so that metadata also has the identifiers with .CEL.gz to match with the counts
+metadata_gse.2034  <- pData(raw_data) # Make sure they have the same data this so that metadata also has the identifiers with .CEL.gz to match with the counts
 
 
 # 4.- Preprocess data -----------------------------------------------------
@@ -194,7 +193,11 @@ proof_genes_pt_gse2034 <-
   dplyr::select(- index, # Select only the columns of interest and discard the rest
                 - id,
                 - ER_STAT,
-                - BRAIN_REL)
+                - BRAIN_REL,
+                - LYMPH)
 
+
+proof_genes_pt_gse2034 <- proof_genes_pt_gse2034 %>% 
+  mutate(across(-c(EVENT_MON, EVENT_STAT, surv_obj), scale))
 
 
