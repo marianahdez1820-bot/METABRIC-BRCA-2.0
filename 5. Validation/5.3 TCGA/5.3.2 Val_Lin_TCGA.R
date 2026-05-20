@@ -24,7 +24,8 @@ tcga_results <- predict(final_fit, new_data = proof_genes_pt.tcga, type = "linea
 
 tcga_results <-
   tcga_results %>%
-  mutate(risk_group = factor(ifelse(.pred_linear_pred < median(.pred_linear_pred), "High Risk", "Low Risk")))
+  mutate(risk_group = factor(ifelse(.pred_linear_pred < true_cut$cutpoint$cutpoint[1], "High Risk", "Low Risk"))) # median(.pred_linear_pred) # true_cut$cutpoint$cutpoint[1],
+
 
 # 2.3.2 Relevel so as to have low risk as reference
 
