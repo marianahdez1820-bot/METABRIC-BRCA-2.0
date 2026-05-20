@@ -38,7 +38,7 @@
     column_to_rownames("X")
   
   
-  # 1.4 Convert to data frmae
+  # 1.4 Convert to data frame
   
   brca_data <- brca_matrix %>% 
     as.data.frame()
