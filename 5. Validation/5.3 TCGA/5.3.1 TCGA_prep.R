@@ -292,7 +292,7 @@
     proof_genes_pt.tcga <- 
       proof_genes_pt.tcga %>% 
       filter(EVENT_MON >= 2 & EVENT_MON <= 180)
-    print("Recurrene singature, filtered")
+    print("Recurrene signature, filtered")
   }else{
     "Survival signature, no filter"
 }
