@@ -1,25 +1,35 @@
+library(survminer)
 
-# 6.- Validation ----------------------------------------------------------
+# 1.- Validation ----------------------------------------------------------
 
-# This is the predict phase
+# 1.1 Predict on GSE2034 set
 
 gse2034_results <- predict(final_fit, new_data = proof_genes_pt_gse2034, type = "linear_pred") %>%
   bind_cols(proof_genes_pt_gse2034 %>% 
               rownames_to_column("file_name"))
 
 
-# 6.3 To get the p value
-
-validation_test <- coxph(Surv(EVENT_MON,  EVENT_STAT) ~ .pred_linear_pred, data = gse2034_results)
-
-summary(validation_test)
-
-# 6.8 Calculate the actual Concordance Index
+# 1.2 Calculate the Concordance Index
 
 c_index_results.2034 <- concordance(Surv(EVENT_MON, EVENT_STAT) ~ .pred_linear_pred, 
                                     data = gse2034_results)
 
-library(survminer)
+# 1.3 Table with confidence interval and z stat and estimated p val
+
+c_index_summary.gse2034 <- data.frame(
+  C_Index = c_index_results.2034$concordance,
+  SE = sqrt(c_index_results.2034$var)
+) %>%
+  mutate(
+    conf_int_low95  = C_Index - (1.96 * SE),
+    conf_int_high95 = C_Index + (1.96 * SE),
+    z_stat  = (C_Index - 0.5) / SE,
+    p_value = 1 - pnorm(z_stat)
+  )
+
+print(c_index_summary.gse2034)
+
+
 
 # Create risk groups based on the median of the predictions
 
@@ -28,11 +38,11 @@ gse2034_results <- gse2034_results %>%
 
 # Fit the KM curve
 
-km_fit <- survfit(Surv(EVENT_MON,  EVENT_STAT) ~ risk_group, data = gse2034_results)
+km_fit.gse2034 <- survfit(Surv(EVENT_MON,  EVENT_STAT) ~ risk_group, data = gse2034_results)
 
 # Plot
 
-ggsurvplot(km_fit, 
+ggsurvplot(km_fit.gse2034, 
            data = gse2034_results, 
            pval = TRUE, 
            risk.table = TRUE,
@@ -67,6 +77,7 @@ gse2034_split <- survSplit(
 )
 
 # Run Cox again
+
 gse2034_split$risk_group <- relevel(gse2034_split$risk_group, ref = "Low Risk")
 
 
@@ -84,10 +95,27 @@ res_auc.gse2034 <- timeROC(T = gse2034_results$EVENT_MON,
                            times = c(12, 36, 60, 120), # 3, 5, and 10 years
                            iid = TRUE)
 
-# 6.9.2 View the AUC values
+# 6.9.2 Table with confidence interval and z stat and estimated p val
 
-auc_gse2034 <- res_auc.gse2034$AUC %>% 
-  as.data.frame()
+auc_ci.gse2034 <- data.frame(
+  AUC  = res_auc.gse2034$AUC,
+  SE   = res_auc.gse2034$inference$vect_sd_1,
+  time = res_auc.gse2034$times
+) %>% 
+  mutate(
+    conf_int_low95  = AUC - (1.96 * SE),
+    conf_int_high95 = AUC + (1.96 * SE),
+    z_stat  = (AUC - 0.5) / SE,
+    p_value = 1 - pnorm(z_stat)
+  )
+
+# 3.1.1.3 Text
+
+for (i in 1:5) {
+  
+  cat(paste0(round(auc_ci.gse2034$AUC[i], 2), " (", round(auc_ci.gse2034$conf_int_low95[i], 2), "-", round(auc_ci.gse2034$conf_int_high95[i], 2), "z score ", round(auc_ci.gse2034$z_stat[i], 2),  " pval ", round(auc_ci.gse2034$p_value[i], 4), ")", " at ", auc_ci.gse2034$time[i], " months (",auc_ci.gse2034$time[i] / 12, " years), "))
+  
+}
 
 # View the AUC values
 
@@ -365,6 +393,14 @@ for (i in c(36, 60, 120)) {
   
 }
 
+
+# 2.8 Obtain patients found on all of the iterations of the for loop as top bias patients
+
+bias_interesct.gse2034 <- intersect(intersect(list[[36]], list[[60]]) , list[[120]])
+
+# 2.8.2 Similar but all unique so even if they appear once we register them
+
+bias_diff_id.gse2034 <- unique(c(list[[36]], list[[60]], list[[120]]))
 
 
 # 7.- Other scores --------------------------------------------------------
