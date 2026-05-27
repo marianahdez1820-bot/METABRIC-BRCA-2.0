@@ -1,7 +1,6 @@
 library(ggrepel)
 library(paletteer)
 library(patchwork)
-library(RColorBrewer)
 
 
 # 1.- Lasso impact analysis -----------------------------------------------
@@ -52,14 +51,15 @@ ggplot(plot_data, aes(x = log_lambda, y = estimate, group = term, color = term))
 
 # 2.1 Add a row ID so we can find these patients later
 
-id <- train_data %>% 
-  rownames_to_column("PATIENT_ID")
+id <- train_data %>%
+  rownames_to_column("PATIENT_ID") %>%
+  mutate(EVENT_STAT = as.numeric(as.character(EVENT_STAT)))
 
 # 2.2 Utilize the fitted object to make predictions based on time
 
 model_diagnostics <- augment(
-  final_fit, 
-  new_data = id, 
+  final_fit,
+  new_data = id,
   eval_time = c(36, 60, 120) # Times in months (3, 5, 10 years)
 )
 
@@ -67,108 +67,123 @@ model_diagnostics <- augment(
 
 list <- list()
 
+no_img <- 1
 
 #> 2.3 For loop that at each desired time point calculates the bias scores, extracts patients with high bias scores
 #> observe metadata of outlier patients and plot the distribution of the prediction with the actual event time
 
 for (i in c(36, 60, 120)) {
-  
+
   eval_time <- i
-  
+
   # 2.3 Unnest the predictions and find the biggest outliers on a set point and event
-  
+
   outliers <- model_diagnostics %>%
-    dplyr::select(PATIENT_ID, EVENT_MON, EVENT_STAT, .pred) %>%
+    dplyr::select(PATIENT_ID, EVENT_MON, EVENT_STAT, .pred, .pred_time) %>%
     unnest(.pred) %>%
-    filter(.eval_time == eval_time) %>% 
+    filter(.eval_time == eval_time) %>%
     arrange(desc(.pred_survival)) # Siunce our signature as it goes up, the predicted mortality goes down we see which patients died early who were predicted to die late or survive
-  
-  
+
+
   # 2.4 Object with metadata and score characteristics
-  
+
   outlier_summary <- outliers %>%
     inner_join(ml_metadata, by = "PATIENT_ID", suffix = c("", ".drop")) %>%
     dplyr::select(
-      PATIENT_ID, 
-      .pred_survival, 
-      EVENT_STAT, 
-      EVENT_MON, 
-      CLAUDIN_SUBTYPE, 
-      LYMPH_NODES_EXAMINED_POSITIVE, 
+      PATIENT_ID,
+      .pred_survival,
+      EVENT_STAT,
+      EVENT_MON,
+      CLAUDIN_SUBTYPE,
+      LYMPH_NODES_EXAMINED_POSITIVE,
       THREEGENE,
       INTCLUST,
       .eval_time,
       NPI,
-      CELLULARITY
-    ) 
-  
-  
+      CELLULARITY,
+      HISTOLOGICAL_SUBTYPE,
+      .pred_time,
+      CHEMOTHERAPY,
+      RADIO_THERAPY,
+      HORMONE_THERAPY,
+      BREAST_SURGERY,
+      AGE_AT_DIAGNOSIS,
+      OS_STATUS,
+      OS_MONTHS,
+      RFS_MONTHS,
+      RFS_STATUS
+    )
+
+
   # 2.5 Create bias score for defined time
-  
+
   outliers_bias <- outlier_summary %>%
     mutate(
       bias_score = (((1 - EVENT_STAT) - .pred_survival) ^ 2) * (EVENT_MON - .eval_time) * ( 1 - (2 * EVENT_STAT))
     ) %>%
     arrange(desc(bias_score))
-  
+
   # 2.6 Identify the highest bias patients
-  
+
   # 2.6.1 Obtain mean and sd and then filter baed on patients higher than determined SD
-  
-  extreme_outliers <- 
-    outliers_bias %>% 
+
+  extreme_outliers <-
+    outliers_bias %>%
     mutate(mean_bias = mean(bias_score),
-           sd_bias = sd(bias_score)) %>% 
-    filter(bias_score > (mean_bias + 1 * sd_bias))
-  
+           sd_bias = sd(bias_score)) %>%
+    filter(bias_score > (mean_bias + (1 * sd_bias)))
+
   # 2.6.2 Obtain their IDs
-  
+
   top_bias_ids <- extreme_outliers$PATIENT_ID
-  
+
   print(length(top_bias_ids))
-  
+
   # 2.6.3 Identify different characteristics of patients identified as top bias
-  
+
   print(outliers_bias %>%
-          filter(PATIENT_ID %in% top_bias_ids) %>% 
-          group_by(CLAUDIN_SUBTYPE, INTCLUST) %>%
+          filter(PATIENT_ID %in% top_bias_ids) %>%
+          group_by(RADIO_THERAPY) %>%
           summarise(
             count = n(),
             avg_pred_event = mean(.pred_survival),
             avg_event_time = mean(EVENT_MON)
           ) %>%
-          arrange(desc(count))
-  )
-  
+          arrange(desc(count)),
+
+        n = 200
+          )
+
   # 2.7.1 Add a column identifying patients as top bias or not
-  
-  outliers <- 
-    outliers %>% 
+
+  outliers <-
+    outliers %>%
     mutate(quadrant = case_when(
              PATIENT_ID %in% top_bias_ids & EVENT_STAT == 0 ~ 2,
              PATIENT_ID %in% top_bias_ids & EVENT_STAT == 1 ~ 1,
              TRUE ~ 0
            ))
-  
-  print(outliers %>% 
-          group_by(EVENT_STAT) %>% 
+
+  print(outliers %>%
+          group_by(EVENT_STAT) %>%
           dplyr::count(quadrant))
-  
+
   # 2.7.2 Plot
-  
-  theme_embedded <- theme_linedraw(base_size = 25) + 
+  if(no_img == 0){
+
+  theme_embedded <- theme_linedraw(base_size = 25) +
     theme(
       legend.position = c(0.95, 0.3), # Adjust coordinates (x, y) from 0 to 1
       legend.background = element_rect(fill = alpha("white", 0.5))
     )
-  
+
   # 2.7.2.1 Plot colored by EVENT_STAT
-  
+
   p1 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(EVENT_STAT), shape = factor(EVENT_STAT))) +
     geom_point(size = 2, alpha = 0.7) + # Increased size and opacity
     stat_ellipse(type = "t", level = 0.95) + # Adds 95% confidence ellipse
     geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-    scale_color_viridis_d() + 
+    scale_color_viridis_d() +
     labs(
       title = "Event Status Distribution",
       x = paste0("Actual Event Time (Months)", eval_time),
@@ -177,14 +192,14 @@ for (i in c(36, 60, 120)) {
       shape = "Event Stat"
     ) +
     theme_embedded
-  
+
   # 2.7.2.2 Plot colored by quadrant
-  
+
   p2 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(quadrant), shape = factor(EVENT_STAT))) +
     geom_point(size = 2, alpha = 0.7) +
-    stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) + 
+    stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) +
     geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-    scale_color_viridis_d() + 
+    scale_color_viridis_d() +
     labs(
       title = "Quadrant Analysis",
       x = paste0("Actual Event Time (Months)", eval_time),
@@ -193,13 +208,16 @@ for (i in c(36, 60, 120)) {
       shape = "Event Stat"
     ) +
     theme_embedded
-  
+
   # 2.7.3 Combine and stack
-  
+
   print( p1 + p2)
-  
+  }else{
+
+  }
+
   list[[i]] <- top_bias_ids
-  
+
 }
 
 # 2.8 Obtain patients found on all of the iterations of the for loop as top bias patients
@@ -212,17 +230,43 @@ bias_diff_id <- unique(c(list[[36]], list[[60]], list[[120]]))
 
 # 2.9 Observe characteristics of the bias_diff_id patients
 
-outliers_bias %>%
-  filter(PATIENT_ID %in% bias_diff_id) %>% 
-  group_by(EVENT_STAT, INTCLUST) %>%
+print(outliers_bias %>%
+  filter(PATIENT_ID %in% bias_diff_id) %>%
+  mutate(intcluster = ifelse(INTCLUST == "3" | INTCLUST == "4ER+" | INTCLUST == "7" | INTCLUST == "8",
+                            "Low",
+                            "High"),
+         lymph_group = case_when(
+           LYMPH_NODES_EXAMINED_POSITIVE == 0 ~ 0,
+           LYMPH_NODES_EXAMINED_POSITIVE > 0 & LYMPH_NODES_EXAMINED_POSITIVE  < 4 ~ 1,
+           LYMPH_NODES_EXAMINED_POSITIVE >= 4 ~ 2
+         ),
+         any_tx = ifelse(HORMONE_THERAPY == "YES" | RADIO_THERAPY == "YES" | CHEMOTHERAPY == "YES",
+                         "Recieved",
+                         "Not recieved"),
+         non_hm_tx = case_when(
+           RADIO_THERAPY == "YES" & CHEMOTHERAPY == "YES" & HORMONE_THERAPY == "YES" ~ "All",
+           xor(RADIO_THERAPY == "YES", CHEMOTHERAPY == "YES") & HORMONE_THERAPY == "YES" ~ "Hormone and else",
+           RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO" & HORMONE_THERAPY == "YES" ~ "Only hormone",
+           RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO" & HORMONE_THERAPY == "NO" ~ "Nothing",
+           xor(RADIO_THERAPY == "YES", CHEMOTHERAPY == "YES") & HORMONE_THERAPY == "NO" ~ "Else no hormone",
+           RADIO_THERAPY == "YES" & CHEMOTHERAPY == "YES" & HORMONE_THERAPY == "NO" ~ "Both else no hormone"
+           ),
+         age_bin = ifelse(AGE_AT_DIAGNOSIS > 50,
+                          ">50",
+                          "<50")
+         ) %>%
+  group_by(EVENT_STAT, HORMONE_THERAPY, RADIO_THERAPY, CHEMOTHERAPY, BREAST_SURGERY, intcluster, age_bin) %>%
   summarise(
     count = n(),
+    avg_bias = mean(bias_score),
     avg_pred_event = mean(.pred_survival),
-    avg_event_time = mean(EVENT_MON)
+    avg_event_time = mean(EVENT_MON),
+    avg_pred_time = mean(.pred_time)
   ) %>%
-  arrange(desc(count))
+  arrange(desc(EVENT_STAT)),
+n = 200)
 
-# 2.10 Bias score based on pred time not on time evaluated
+# 2.10 Bias scoEVENT_STAT# 2.10 Bias score based on pred time not on tiHISTOLOGICAL_SUBTYPE# 2.10 Bias scoEVENT_STAT# 2.10 Bias score based on pred time not on time evaluated
 
 outlier_pred_time <- model_diagnostics %>% 
   unnest(.pred) %>% 
@@ -412,15 +456,27 @@ survival_metrics <- metric_set(
   roc_auc_survival
 )
 
-# 5.3 Run the resamples
+# 5.3 Run the resamples (we run for c score and for auc so as to then calculate their individual CI and p val)
+
+# 5.3.1.1 AUC and C score 
 
 final_resample_results <- final_wf %>%
   fit_resamples(
     resamples = final_resamples,
     metrics = survival_metrics,
-    eval_time = c(36, 60, 120),  # Required for time-dependent ROC
+    eval_time = c(12, 36, 60, 72, 120),  # Required for time-dependent ROC
     control = control_resamples(save_pred = TRUE) # Useful if you need predictions later
   )
+
+# 5.3.1.2 C score
+
+final_resample_cscore <- final_wf %>%
+  fit_resamples(
+    resamples = final_resamples,
+    metrics = metric_set(concordance_survival),
+    control = control_resamples(save_pred = TRUE) # Useful if you need predictions later
+  )
+
 
 # 5.3.2 Obtain metrics
 
@@ -431,16 +487,60 @@ collect_metrics(final_resample_results)
 
 resamples_all <- collect_metrics(final_resample_results, summarize = FALSE)
 
-# 5.4.2 Extract the C-scores
+resamples_cscore <- collect_metrics(final_resample_cscore, summarize = FALSE)
 
-resamples_c$id[resamples_c$.estimate == max(resamples_c$.estimate)]
+# 5.5.1 Extract the C-scores
 
-resamples_c$id[resamples_c$.estimate == min(resamples_c$.estimate)]
+resamples_c <- resamples_all %>% 
+  filter(.metric == "concordance_survival")
+
+# 5.5.2 Extract the AUC
+
+resamples_auc <- resamples_all %>% 
+  filter(.metric == "roc_auc_survival") %>% 
+  na.omit()
+
+
+# 5.6.1 Tables with CI 95%, z statistic and p val for C score
+
+summary_cscore <- resamples_cscore  %>% 
+  filter(.metric == "concordance_survival")%>%
+  summarise(
+    mean = mean(.estimate),
+    sd = sd(.estimate),
+    n = n(),
+    se = sd / sqrt(n),
+    lower = mean - 1.96 * se,
+    upper = mean + 1.96 * se,
+    z_stat = (mean - 0.5) / se,
+    p_value = 1 - pnorm(z_stat)
+  )
+
+
+# 5.6.2 Tables with CI 95%, z statistic and p val for AUC
+
+summary_auc <- resamples_auc %>%
+  group_by(.eval_time) %>%
+  summarise(
+    mean = mean(.estimate),
+    sd = sd(.estimate),
+    n = n(),
+    se = sd / sqrt(n),
+    lower = mean - 1.96 * se,
+    upper = mean + 1.96 * se,
+    z_stat = (mean - 0.5) / se,
+    p_value = 1 - pnorm(z_stat),
+    .groups = "drop"
+  )
+
+max_fold <- rownames(resamples_c)[resamples_c$.estimate == max(resamples_c$.estimate)]
+
+min_fold <- rownames(resamples_c)[resamples_c$.estimate == min(resamples_c$.estimate)]
 
 # 5.7 From the fold outlier identify different clinical characteristics
 
-for (i in c(35, 4)) { # Here add the number of the folds to analyze
-  
+for (i in c(as.numeric(min_fold), as.numeric(max_fold))) { # Here add the number of the folds to analyze
+
   refold <- final_resamples$splits[[i]] # Gives the split of each fold
   
   # Patients used for training in fold i
@@ -468,12 +568,12 @@ for (i in c(35, 4)) { # Here add the number of the folds to analyze
         suffix = c("", ".drop")
       ) %>% 
       dplyr::select(-dplyr::ends_with(".drop")) %>% 
-      dplyr::group_by(CLAUDIN_SUBTYPE, EVENT_STAT) %>% 
+      dplyr::group_by(HISTOLOGICAL_SUBTYPE, CLAUDIN_SUBTYPE, INTCLUST, EVENT_STAT) %>% 
       dplyr::summarise(
         mean_OS = mean(EVENT_MON, na.rm = TRUE),
         n = dplyr::n(),
         mean_score = mean(score),
-        .groups = "drop"   # removes all grouping from the output
+        .groups = "drop"   
       ),
     n = 250
   )
@@ -492,7 +592,7 @@ for (i in c(35, 4)) { # Here add the number of the folds to analyze
       dplyr::summarise(
         mean_OS = mean(EVENT_MON, na.rm = TRUE),
         n = dplyr::n(),
-        .groups = "drop"   # removes all grouping from the output
+        .groups = "drop"   
       )
   )
   
@@ -507,60 +607,37 @@ for (i in c(35, 4)) { # Here add the number of the folds to analyze
   test_pred_refold <- predict(final_fit, new_data =  test_ids, type = "linear_pred")
   test_ids$.pred_linear_pred <- test_pred_refold$.pred_linear_pred
   
-  time_roc_refolds <- timeROC(
-    T = test_ids$EVENT_MON,
-    delta = test_ids$EVENT_STAT,
-    marker = - test_ids$.pred_linear_pred,
-    cause = 1,
-    times = c(36, 60, 120),  # 1y, 3y, 5y, 6y, 10y
-    iid = TRUE
-  )
-  
-  # plot_roc_bias <- map_df(c(36, 60, 120), function(i){
-  #   
-  #   time_label <- i
-  #   
-  #   data.frame(
-  #     
-  #     FP = time_roc_refolds$FP[,paste0("t=", i)],
-  #     
-  #     TP = time_roc_refolds$TP[,paste0("t=", i)],
-  #     
-  #     Time = factor(i)
-  #   )
-  #   
-  # })
-  # 
-  # 
-  # legend_labels_bias <- 
-  #   paste0("t=", time_roc_refolds$times, " (AUC: ", 100 * round(time_roc_refolds$AUC, 3), "%)")
-  # 
-  # facet_labels_bias <- 
-  #   data.frame(
-  #     Time = factor(c(36, 60, 120)),
-  #     AUC_Text = paste0("AUC: ", round(100 * as.numeric(time_roc_refolds$AUC[1:3]), 3), "%")
-  #   )
-  # 
-  # 
-  # p2 <- ggplot(data = plot_roc_bias, aes(x = FP, y = TP)) +
-  #   geom_line(color = "darkblue", linewidth = 1) + 
-  #   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "grey50") +
-  #   facet_wrap(~ Time, ncol = 2) + 
-  #   theme_bw() +
-  #   labs(
-  #     title = paste0("Time-Dependent ROC Curves for fold ", i),
-  #     x = "False Positive Rate",
-  #     y = "True Positive Rate"
-  #   ) +
-  #   geom_text(data = facet_labels_bias, 
-  #             aes(x = 0.75, y = 0.1, label = AUC_Text), 
-  #             size = 4, fontface = "bold")
-  # 
-  # print(p2)
   
 }
 
 
+mc_plot1 <- 
+  ggplot(resamples_c, aes(x = reorder(id, .estimate), y = .estimate)) + # Reorder so that it gives an increasing graph
+  geom_point() +
+  geom_hline(yintercept = mean(resamples_c$.estimate), linetype = "dashed", color = "red") +
+  annotate("text", x = 5, y = mean(resamples_c$.estimate),
+           label = paste0("Mean = ", round(mean(resamples_c$.estimate), 3)),
+           vjust = -1) + 
+  labs(x = "Resample split (ordered by performance)", y = "Concordance score", title = "Refold: C-score Distribution (100 iterations)")+
+  annotate("text", x = 5.2, y = min(resamples_c$.estimate),
+           label = paste0("Min = ", round(min(resamples_c$.estimate), 3)),
+           vjust = 0.4) +
+  annotate("text", x = length(resamples_c$.estimate) - 4, y = max(resamples_c$.estimate),
+           label = paste0("Max = ", round(max(resamples_c$.estimate), 3)),
+           vjust = 0) +
+  scale_x_discrete(breaks = seq(0, 100, by = 100)) +
+  theme_minimal(base_size = 20)
+
+
+mc_plot2 <- 
+  ggplot(summary_auc, aes(x = factor(.eval_time), y = mean)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+  geom_text(aes(label = paste0("Mean = ", round(mean, 3))), vjust = 0, size = 5, hjust = - 0.2) +
+  labs(x = "Time (Months)", y = "AUC", title = "Refold: Time-dependent AUC (mean ± 95% CI)") +
+  theme_minimal(base_size = 20)
+
+mc_plot1 / mc_plot2
 
 # 6.- Observe distributions and shapiro -----------------------------------
 
@@ -595,28 +672,28 @@ proof_genes_pt.cox <-
 
 # 6.4 Wilcox test of desired data
 
-results_wilcox <- proof_genes_pt.cox %>%
+proof_genes_pt.cox %>%
   dplyr::select(EVENT_STAT, PAM50, SCORE) %>% 
   group_by(PAM50) %>%
-  filter(n() != 1) %>% 
+  filter(n_distinct(EVENT_STAT) == 2) %>%
   group_modify(~ {
     test <- wilcox.test(SCORE ~ EVENT_STAT, data = .)
     tidy(test)
   }) %>%
   ungroup() %>% 
-  mutate(adj_p_value = p.adjust(p.value, method = "BH"))
+  mutate(adj_p_value = p.adjust(p.value, method = "holm"))
 
-print(results_wilcox)
+
 
 # 6.4.2 Plot the  comparisons
 
-ggplot(proof_genes_pt.cox, aes(y = SCORE, x = INTCLUST, fill = INTCLUST)) +
+ggplot(proof_genes_pt.cox, aes(y = SCORE, x = HIST, fill = HIST)) +
   geom_boxplot() +
   scale_fill_paletteer_d("colorBlindness::Blue2Green14Steps") + 
   facet_wrap(~ EVENT_STAT, 
              labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) +
   theme_classic() + 
-  geom_vline(xintercept = 11)
+  geom_vline(xintercept = 8)
 
 
 # 6.4.3 Prepare to plot the different comparisons
@@ -658,9 +735,12 @@ for (i in vars) {
            !(.data[[i]] == "")
            ) %>% 
     ungroup()
-  
-  print(summary(coxph(formula , data = proof_genes_pt.txcox))
+  cox_sum <- summary(coxph(formula , data = proof_genes_pt.txcox))
+  print(cox_sum)
+  print(i)
+print(paste0("HR of ", round(cox_sum$coefficients[3, 1], 2), " (Ci 95% ", round(cox_sum$conf.int[3, 3], 2), " - ", round(cox_sum$conf.int[3, 4], 2), ", pval ", cox_sum$coefficients[3, 5], ")")
 )  
+  
   
 }
 
@@ -668,8 +748,8 @@ for (i in vars) {
 
 ggplot(data = proof_genes_pt.long, aes(y = SCORE, x = Value, fill = Value)) +
   geom_boxplot() + 
-  facet_wrap(~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2,  labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
-  scale_fill_paletteer_d("colorBlindness::Brown2Blue10Steps") + 
-  theme_linedraw(base_size = 18,
-                 ink = "#251325")
+  facet_wrap(~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2,  labeller = labeller(Parameter = c("CHEMO" = "Chemotherapy", "HORMONE" = "Hormone therapy", "SURGERY" = "Surgery Modality"),
+                                                                                         EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
+  scale_fill_paletteer_d("colorBlindness::Blue2DarkOrange12Steps") +
+  theme_classic(base_size = 32)
 
