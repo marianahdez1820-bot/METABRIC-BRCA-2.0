@@ -45,235 +45,15 @@ ggplot(plot_data, aes(x = log_lambda, y = estimate, group = term, color = term))
   expand_limits(x = max(plot_data$log_lambda) - 1.5) # Make room for the names
 
 
+# 2.- Brier score, Schonfeild and martingale residuals --------------------
 
-# 2.- Identifying outlier patients ----------------------------------------
-
-
-# 2.1 Add a row ID so we can find these patients later
-
-id <- train_data %>%
-  rownames_to_column("PATIENT_ID") %>%
-  mutate(EVENT_STAT = as.numeric(as.character(EVENT_STAT)))
-
-# 2.2 Utilize the fitted object to make predictions based on time
-
-model_diagnostics <- augment(
-  final_fit,
-  new_data = id,
-  eval_time = c(36, 60, 120) # Times in months (3, 5, 10 years)
-)
-
-# 2.2.2 Create list to then add the results
-
-list <- list()
-
-no_img <- 1
-
-#> 2.3 For loop that at each desired time point calculates the bias scores, extracts patients with high bias scores
-#> observe metadata of outlier patients and plot the distribution of the prediction with the actual event time
-
-for (i in c(36, 60, 120)) {
-
-  eval_time <- i
-
-  # 2.3 Unnest the predictions and find the biggest outliers on a set point and event
-
-  outliers <- model_diagnostics %>%
-    dplyr::select(PATIENT_ID, EVENT_MON, EVENT_STAT, .pred, .pred_time) %>%
-    unnest(.pred) %>%
-    filter(.eval_time == eval_time) %>%
-    arrange(desc(.pred_survival)) # Siunce our signature as it goes up, the predicted mortality goes down we see which patients died early who were predicted to die late or survive
-
-
-  # 2.4 Object with metadata and score characteristics
-
-  outlier_summary <- outliers %>%
-    inner_join(ml_metadata, by = "PATIENT_ID", suffix = c("", ".drop")) %>%
-    dplyr::select(
-      PATIENT_ID,
-      .pred_survival,
-      EVENT_STAT,
-      EVENT_MON,
-      CLAUDIN_SUBTYPE,
-      LYMPH_NODES_EXAMINED_POSITIVE,
-      THREEGENE,
-      INTCLUST,
-      .eval_time,
-      NPI,
-      CELLULARITY,
-      HISTOLOGICAL_SUBTYPE,
-      .pred_time,
-      CHEMOTHERAPY,
-      RADIO_THERAPY,
-      HORMONE_THERAPY,
-      BREAST_SURGERY,
-      AGE_AT_DIAGNOSIS,
-      OS_STATUS,
-      OS_MONTHS,
-      RFS_MONTHS,
-      RFS_STATUS
-    )
-
-
-  # 2.5 Create bias score for defined time
-
-  outliers_bias <- outlier_summary %>%
-    mutate(
-      bias_score = (((1 - EVENT_STAT) - .pred_survival) ^ 2) * (EVENT_MON - .eval_time) * ( 1 - (2 * EVENT_STAT))
-    ) %>%
-    arrange(desc(bias_score))
-
-  # 2.6 Identify the highest bias patients
-
-  # 2.6.1 Obtain mean and sd and then filter baed on patients higher than determined SD
-
-  extreme_outliers <-
-    outliers_bias %>%
-    mutate(mean_bias = mean(bias_score),
-           sd_bias = sd(bias_score)) %>%
-    filter(bias_score > (mean_bias + (1 * sd_bias)))
-
-  # 2.6.2 Obtain their IDs
-
-  top_bias_ids <- extreme_outliers$PATIENT_ID
-
-  print(length(top_bias_ids))
-
-  # 2.6.3 Identify different characteristics of patients identified as top bias
-
-  print(outliers_bias %>%
-          filter(PATIENT_ID %in% top_bias_ids) %>%
-          group_by(RADIO_THERAPY) %>%
-          summarise(
-            count = n(),
-            avg_pred_event = mean(.pred_survival),
-            avg_event_time = mean(EVENT_MON)
-          ) %>%
-          arrange(desc(count)),
-
-        n = 200
-          )
-
-  # 2.7.1 Add a column identifying patients as top bias or not
-
-  outliers <-
-    outliers %>%
-    mutate(quadrant = case_when(
-             PATIENT_ID %in% top_bias_ids & EVENT_STAT == 0 ~ 2,
-             PATIENT_ID %in% top_bias_ids & EVENT_STAT == 1 ~ 1,
-             TRUE ~ 0
-           ))
-
-  print(outliers %>%
-          group_by(EVENT_STAT) %>%
-          dplyr::count(quadrant))
-
-  # 2.7.2 Plot
-  if(no_img == 0){
-
-  theme_embedded <- theme_linedraw(base_size = 25) +
-    theme(
-      legend.position = c(0.95, 0.3), # Adjust coordinates (x, y) from 0 to 1
-      legend.background = element_rect(fill = alpha("white", 0.5))
-    )
-
-  # 2.7.2.1 Plot colored by EVENT_STAT
-
-  p1 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(EVENT_STAT), shape = factor(EVENT_STAT))) +
-    geom_point(size = 2, alpha = 0.7) + # Increased size and opacity
-    stat_ellipse(type = "t", level = 0.95) + # Adds 95% confidence ellipse
-    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-    scale_color_viridis_d() +
-    labs(
-      title = "Event Status Distribution",
-      x = paste0("Actual Event Time (Months)", eval_time),
-      y = "Predicted Survival",
-      color = "Event Stat",
-      shape = "Event Stat"
-    ) +
-    theme_embedded
-
-  # 2.7.2.2 Plot colored by quadrant
-
-  p2 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(quadrant), shape = factor(EVENT_STAT))) +
-    geom_point(size = 2, alpha = 0.7) +
-    stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) +
-    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-    scale_color_viridis_d() +
-    labs(
-      title = "Quadrant Analysis",
-      x = paste0("Actual Event Time (Months)", eval_time),
-      y = "Predicted Survival",
-      color = "Quadrant",
-      shape = "Event Stat"
-    ) +
-    theme_embedded
-
-  # 2.7.3 Combine and stack
-
-  print( p1 + p2)
-  }else{
-
-  }
-
-  list[[i]] <- top_bias_ids
-
-}
-
-# 2.8 Obtain patients found on all of the iterations of the for loop as top bias patients
-
-bias_interesct <- intersect(intersect(list[[36]], list[[60]]) , list[[120]])
-
-# 2.8.2 Similar but all unique so even if they appear once we register them
-
-bias_diff_id <- unique(c(list[[36]], list[[60]], list[[120]]))
-
-# 2.9 Observe characteristics of the bias_diff_id patients
-
-print(outliers_bias %>%
-  filter(PATIENT_ID %in% bias_diff_id) %>%
-  mutate(intcluster = ifelse(INTCLUST == "3" | INTCLUST == "4ER+" | INTCLUST == "7" | INTCLUST == "8",
-                            "Low",
-                            "High"),
-         lymph_group = case_when(
-           LYMPH_NODES_EXAMINED_POSITIVE == 0 ~ 0,
-           LYMPH_NODES_EXAMINED_POSITIVE > 0 & LYMPH_NODES_EXAMINED_POSITIVE  < 4 ~ 1,
-           LYMPH_NODES_EXAMINED_POSITIVE >= 4 ~ 2
-         ),
-         any_tx = ifelse(HORMONE_THERAPY == "YES" | RADIO_THERAPY == "YES" | CHEMOTHERAPY == "YES",
-                         "Recieved",
-                         "Not recieved"),
-         non_hm_tx = case_when(
-           RADIO_THERAPY == "YES" & CHEMOTHERAPY == "YES" & HORMONE_THERAPY == "YES" ~ "All",
-           xor(RADIO_THERAPY == "YES", CHEMOTHERAPY == "YES") & HORMONE_THERAPY == "YES" ~ "Hormone and else",
-           RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO" & HORMONE_THERAPY == "YES" ~ "Only hormone",
-           RADIO_THERAPY == "NO" & CHEMOTHERAPY == "NO" & HORMONE_THERAPY == "NO" ~ "Nothing",
-           xor(RADIO_THERAPY == "YES", CHEMOTHERAPY == "YES") & HORMONE_THERAPY == "NO" ~ "Else no hormone",
-           RADIO_THERAPY == "YES" & CHEMOTHERAPY == "YES" & HORMONE_THERAPY == "NO" ~ "Both else no hormone"
-           ),
-         age_bin = ifelse(AGE_AT_DIAGNOSIS > 50,
-                          ">50",
-                          "<50")
-         ) %>%
-  group_by(EVENT_STAT, HORMONE_THERAPY, RADIO_THERAPY, CHEMOTHERAPY, BREAST_SURGERY, intcluster, age_bin) %>%
-  summarise(
-    count = n(),
-    avg_bias = mean(bias_score),
-    avg_pred_event = mean(.pred_survival),
-    avg_event_time = mean(EVENT_MON),
-    avg_pred_time = mean(.pred_time)
-  ) %>%
-  arrange(desc(EVENT_STAT)),
-n = 200)
-
-
-# 2.11 Brier score
+# 2.1 Brier score
 
 model_diagnostics %>% 
   brier_survival(truth = surv_obj, .pred)
 
 
-# 2.12 Martingale and Schofeild residuals
+# 2.2 Martingale and Schofeild residuals
 
 cox.zph(cox_model)
 
@@ -302,66 +82,12 @@ ggplot(coef_df, aes(x = estimate, y = reorder(term, importance), fill = directio
 
 
 
-# 4.- How the signature scores different categories -----------------------
-
-
-# 4.1 Boxplot of the score with respect to PAM50
-
-ggplot(proof_genes_pt.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
-  geom_boxplot() +
-  scale_fill_paletteer_d("ggsci::deep_purple_material") 
-
-# 4.2 Scatter plot of the score with relation with lymph nodes
-
-ggplot(proof_genes_pt.cox, aes(y = SCORE, x = LYMPH)) +
-  geom_point() 
-
-
-# 4.3 For plotting the score with respect to diverse treatment modalities
-# 4.3.1 Change to pivot longer with respect to the treatment types and add a column with treatment type and another with which treatment did the patient recieve
-
-proof_genes_long <- 
-  proof_genes_pt.cox %>%
-  pivot_longer(
-    cols = c(HORMONE, CHEMO, SURGERY), # Add any other parameters here
-    names_to = "Parameter",
-    values_to = "Value"
-  )
-
-# 4.3.2 Plot using the new Value column for X and Parameter for facets
-
-ggplot(proof_genes_long, aes(y = SCORE, x = Value, fill = Value)) +
-  geom_boxplot() +
-  facet_wrap( ~ Parameter + EVENT_STAT, scales = "free_x") + # free_x allows different labels for each box
-  scale_fill_paletteer_d("ggsci::deep_purple_material") +
-  theme_minimal() +
-  labs(x = "Treatment/Parameter Value") +
-  theme(
-    axis.title = element_text(size = 14),
-    axis.text = element_text(size = 12),
-    strip.text = element_text(size = 13),
-    legend.text = element_text(size = 11),
-    legend.title = element_text(size = 12)
-  )
-
-# 4.3.3 Kruskal test
-
-
-kruskal.test(SCORE ~  PAM50, data = proof_genes_pt.cox)
-
-# 4.4 Multivariate cox with treatment types
-
-coxph(surv_obj ~ PAM50 * SCORE, data = proof_genes_pt.cox) %>% 
-  tidy(exponentiate = TRUE, conf.int = TRUE)
-
-
-
 # 5.- Resampling ----------------------------------------------------------
 
 
 set.seed(456) 
 
-# 5.1 Fold 20 times the whole data
+# 5.1 Fold 100 times the whole data
 
 final_resamples <- mc_cv(
   proof_genes_pt, 
@@ -386,8 +112,8 @@ final_resample_results <- final_wf %>%
   fit_resamples(
     resamples = final_resamples,
     metrics = survival_metrics,
-    eval_time = c(12, 36, 60, 72, 120),  # Required for time-dependent ROC
-    control = control_resamples(save_pred = TRUE) # Useful if you need predictions later
+    eval_time = c(12, 36, 60, 72, 120),  
+    control = control_resamples(save_pred = TRUE) 
   )
 
 # 5.3.1.2 C score
@@ -396,7 +122,7 @@ final_resample_cscore <- final_wf %>%
   fit_resamples(
     resamples = final_resamples,
     metrics = metric_set(concordance_survival),
-    control = control_resamples(save_pred = TRUE) # Useful if you need predictions later
+    control = control_resamples(save_pred = TRUE) 
   )
 
 
@@ -422,125 +148,45 @@ resamples_auc <- resamples_all %>%
   filter(.metric == "roc_auc_survival") %>% 
   na.omit()
 
+# 5.6.1 Summary for C-score
 
-# 5.6.1 Tables with CI 95%, z statistic and p val for C score
-
-summary_cscore <- resamples_cscore  %>% 
-  filter(.metric == "concordance_survival")%>%
+summary_cscore <- resamples_cscore %>% 
+  filter(.metric == "concordance_survival") %>%
   summarise(
-    mean = mean(.estimate),
-    sd = sd(.estimate),
-    n = n(),
-    se = sd / sqrt(n),
-    lower = mean - 1.96 * se,
-    upper = mean + 1.96 * se,
-    z_stat = (mean - 0.5) / se,
-    p_value = 1 - pnorm(z_stat)
+    mean_c    = mean(.estimate),
+    median_c  = median(.estimate),
+    sd_c      = sd(.estimate),  # This is your true Standard Error
+    n         = n(),
+    q2.5  = quantile(.estimate, probs = 0.025),
+    q97.5  = quantile(.estimate, probs = 0.975),
+    p_value   = mean(.estimate <= 0.5)
   )
 
-
-# 5.6.2 Tables with CI 95%, z statistic and p val for AUC
+# 5.6.2  Summary for AUC
 
 summary_auc <- resamples_auc %>%
   group_by(.eval_time) %>%
   summarise(
-    mean = mean(.estimate),
-    sd = sd(.estimate),
-    n = n(),
-    se = sd / sqrt(n),
-    lower = mean - 1.96 * se,
-    upper = mean + 1.96 * se,
-    z_stat = (mean - 0.5) / se,
-    p_value = 1 - pnorm(z_stat),
+    mean_auc   = mean(.estimate),
+    median_auc = median(.estimate),
+    sd_auc     = sd(.estimate), # This is your true Standard Error
+    n          = n(),
+    q2.5   = quantile(.estimate, probs = 0.025),
+    q97.5   = quantile(.estimate, probs = 0.975),
+    p_value    = mean(.estimate <= 0.5),
     .groups = "drop"
   )
 
-max_fold <- rownames(resamples_c)[resamples_c$.estimate == max(resamples_c$.estimate)]
-
-min_fold <- rownames(resamples_c)[resamples_c$.estimate == min(resamples_c$.estimate)]
-
-# 5.7 From the fold outlier identify different clinical characteristics
-
-for (i in c(as.numeric(min_fold), as.numeric(max_fold))) { # Here add the number of the folds to analyze
-
-  refold <- final_resamples$splits[[i]] # Gives the split of each fold
-  
-  # Patients used for training in fold i
-  
-  train_ids <- analysis(refold)
-  
-  # Patients used for validation in fold i
-  
-  test_ids <- assessment(refold)
-  
-  # Uses the metadata and obtains only the patients in i folds test set
-  
-  meta_testid <- ml_metadata[ml_metadata$PATIENT_ID %in% rownames(test_ids),]
-  
-  test_ids$score <- predict(final_fit, new_data = test_ids, type = "linear_pred")$.pred_linear_pred
-  
-  # Print the counts of desired characteristics of patrients in the i fold test data
-  
-  print(
-    test_ids %>% 
-      tibble::rownames_to_column("PATIENT_ID") %>% 
-      dplyr::left_join(
-        meta_testid,
-        by = "PATIENT_ID",
-        suffix = c("", ".drop")
-      ) %>% 
-      dplyr::select(-dplyr::ends_with(".drop")) %>% 
-      dplyr::group_by(HISTOLOGICAL_SUBTYPE, CLAUDIN_SUBTYPE, INTCLUST, EVENT_STAT) %>% 
-      dplyr::summarise(
-        mean_OS = mean(EVENT_MON, na.rm = TRUE),
-        n = dplyr::n(),
-        mean_score = mean(score),
-        .groups = "drop"   
-      ),
-    n = 250
-  )
-  
-  
-  print(
-    test_ids %>% 
-      tibble::rownames_to_column("PATIENT_ID") %>% 
-      dplyr::left_join(
-        meta_testid,
-        by = "PATIENT_ID",
-        suffix = c("", ".drop")
-      ) %>% 
-      dplyr::select(-dplyr::ends_with(".drop")) %>% 
-      dplyr::group_by(EVENT_STAT) %>% 
-      dplyr::summarise(
-        mean_OS = mean(EVENT_MON, na.rm = TRUE),
-        n = dplyr::n(),
-        .groups = "drop"   
-      )
-  )
-  
-  # Aditionally print the names and id of patient identified as high bias of the train set
-  
-  print(paste0(ml_metadata$CLAUDIN_SUBTYPE[ml_metadata$PATIENT_ID %in% bias_diff_id[bias_diff_id %in% rownames(test_ids)]],
-               " ",
-               bias_diff_id[bias_diff_id %in% rownames(test_ids)])
-  )
-  
-  
-  test_pred_refold <- predict(final_fit, new_data =  test_ids, type = "linear_pred")
-  test_ids$.pred_linear_pred <- test_pred_refold$.pred_linear_pred
-  
-  
-}
-
+# 5.7 Plot the distribution of the C-index and the AUC at the studied time points with the intervals determined by the quantiles
 
 mc_plot1 <- 
   ggplot(resamples_c, aes(x = reorder(id, .estimate), y = .estimate)) + # Reorder so that it gives an increasing graph
   geom_point() +
   geom_hline(yintercept = mean(resamples_c$.estimate), linetype = "dashed", color = "red") +
   annotate("text", x = 5, y = mean(resamples_c$.estimate),
-           label = paste0("Mean = ", round(mean(resamples_c$.estimate), 3)),
+           label = paste0("Median = ", round(median(resamples_c$.estimate), 3)),
            vjust = -1) + 
-  labs(x = "Resample split (ordered by performance)", y = "Concordance score", title = "Refold: C-score Distribution (100 iterations)")+
+  labs(x = "Resample split (ordered by performance)", y = "Concordance score", title = "Refold: C-score Distribution (100 iterations) Recurrence")+
   annotate("text", x = 5.2, y = min(resamples_c$.estimate),
            label = paste0("Min = ", round(min(resamples_c$.estimate), 3)),
            vjust = 0.4) +
@@ -552,11 +198,11 @@ mc_plot1 <-
 
 
 mc_plot2 <- 
-  ggplot(summary_auc, aes(x = factor(.eval_time), y = mean)) +
+  ggplot(summary_auc, aes(x = factor(.eval_time), y = median_auc)) +
   geom_point(size = 3) +
-  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
-  geom_text(aes(label = paste0("Mean = ", round(mean, 3))), vjust = 0, size = 5, hjust = - 0.2) +
-  labs(x = "Time (Months)", y = "AUC", title = "Refold: Time-dependent AUC (mean ± 95% CI)") +
+  geom_errorbar(aes(ymin = q2.5, ymax = q97.5), width = 0.2) +
+  geom_text(aes(label = paste0("Median = ", round(median_auc, 3))), vjust = 0, size = 5, hjust = - 0.2) +
+  labs(x = "Time (Months)", y = "AUC", title = "Refold: Time-dependent AUC (median and quantile 2.5 and 97.5)") +
   theme_minimal(base_size = 20)
 
 mc_plot1 / mc_plot2
@@ -586,17 +232,21 @@ ggplot(test_data, aes(x = risk_score, fill = factor(EVENT_STAT, labels = c("Aliv
        y = "Density",
        title = "Distribution of score with respect to event")
 
-# Convert to factor
+# 6.4.0 Convert EVENT_sTAT to factor
 
 proof_genes_pt.cox <- 
   proof_genes_pt.cox %>%
   mutate(EVENT_STAT = factor(EVENT_STAT)) 
 
-# 6.4 Wilcox test of desired data
+# 6.4 Wilcox test of Histology, Claudin subtype and INTCLUST data
 
-proof_genes_pt.cox %>%
-  dplyr::select(EVENT_STAT, PAM50, SCORE) %>% 
-  group_by(PAM50) %>%
+ch_var <- c("HIST", "PAM50", "INTCLUST")
+
+for (i in ch_var) {
+
+print(proof_genes_pt.cox %>%
+  dplyr::select(EVENT_STAT, all_of(i), SCORE) %>% 
+  group_by(.data[[i]]) %>%
   filter(n_distinct(EVENT_STAT) == 2) %>%
   group_modify(~ {
     test <- wilcox.test(SCORE ~ EVENT_STAT, data = .)
@@ -604,18 +254,32 @@ proof_genes_pt.cox %>%
   }) %>%
   ungroup() %>% 
   mutate(adj_p_value = p.adjust(p.value, method = "holm"))
+)
 
-
+}
 
 # 6.4.2 Plot the  comparisons
 
-ggplot(proof_genes_pt.cox, aes(y = SCORE, x = HIST, fill = HIST)) +
-  geom_boxplot() +
-  scale_fill_paletteer_d("colorBlindness::Blue2Green14Steps") + 
-  facet_wrap(~ EVENT_STAT, 
-             labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) +
-  theme_classic() + 
-  geom_vline(xintercept = 8)
+
+for (i in ch_var) {
+  
+
+  p <- ggplot(
+    proof_genes_pt.cox,
+    aes(x = .data[[i]], y = SCORE, fill = .data[[i]])
+  ) +
+    geom_boxplot() +
+    scale_fill_paletteer_d("colorBlindness::Blue2Green14Steps") +
+    facet_wrap(
+      ~ EVENT_STAT,
+      labeller = labeller(EVENT_STAT = c("0" = "Alive",
+                                         "1" = "Deceased"))
+    ) +
+    theme_classic()
+  
+  print(p)
+}
+
 
 
 # 6.4.3 Prepare to plot the different comparisons
@@ -629,9 +293,9 @@ proof_genes_pt.long<-
   )
 
 
-# 6.4 Wilcox test of desired data
+# 6.4 Wilcox test between treatment types
 
-results_wilcox_treat <- proof_genes_pt.long %>%
+proof_genes_pt.long %>%
   dplyr::select(EVENT_STAT, Parameter, Value, SCORE) %>% 
   group_by(Parameter, Value) %>%
   filter(n() != 1) %>% 
@@ -640,31 +304,30 @@ results_wilcox_treat <- proof_genes_pt.long %>%
     tidy(test)
   }) %>%
   ungroup() %>% 
-  mutate(adj_p_value = p.adjust(p.value, method = "BH"))
+  mutate(adj_p_value = p.adjust(p.value, method = "holm"))
 
-print(results_wilcox_treat$adj_p_value)
+# 6.5 Cox analysis of interaction between score and treatment 
 
-vars <- c("CHEMO", "HORMONE", "SURGERY")
+tx_vars <- c("CHEMO", "HORMONE", "SURGERY")
 
-for (i in vars) {
-  formula <- as.formula(paste("surv_obj ~ ", i, " * SCORE"))
+for (i in tx_vars) {
+  formula <- as.formula(paste("surv_obj ~ ", i, " * SCORE")) # Establish formula
   
   proof_genes_pt.txcox <- 
     proof_genes_pt.cox %>% 
     group_by(.data[[i]]) %>%
-    filter(n_distinct(EVENT_STAT) == 2,
-           !(is.na(.data[[i]])),
-           !(.data[[i]] == "")
-           ) %>% 
+    filter(n_distinct(EVENT_STAT) == 2, # FIlter data with complete separation
+           !(is.na(.data[[i]])), # Filter NA
+           !(.data[[i]] == "") # Filter fod the unregistered surgery
+    ) %>% 
     ungroup()
   cox_sum <- summary(coxph(formula , data = proof_genes_pt.txcox))
   print(cox_sum)
   print(i)
-print(paste0("HR of ", round(cox_sum$coefficients[3, 1], 2), " (Ci 95% ", round(cox_sum$conf.int[3, 3], 2), " - ", round(cox_sum$conf.int[3, 4], 2), ", pval ", cox_sum$coefficients[3, 5], ")")
-)  
   
   
 }
+
 
 # 6.4.3.2 Plot
 
