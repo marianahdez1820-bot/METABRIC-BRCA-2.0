@@ -47,6 +47,21 @@ ggplot(plot_data, aes(x = log_lambda, y = estimate, group = term, color = term))
 
 # 2.- Brier score, Schonfeild and martingale residuals --------------------
 
+# 1 Add a row ID so we can find these patients later
+
+id <- train_data %>%
+  rownames_to_column("PATIENT_ID") %>%
+  mutate(EVENT_STAT = as.numeric(as.character(EVENT_STAT)))
+
+# 1.2 Utilize the fitted object to make predictions based on time
+
+model_diagnostics <- augment(
+  final_fit,
+  new_data = id,
+  eval_time = c(36, 60, 120) # Times in months (3, 5, 10 years)
+)
+
+
 # 2.1 Brier score
 
 model_diagnostics %>% 
@@ -240,7 +255,7 @@ proof_genes_pt.cox <-
 
 # 6.4 Wilcox test of Histology, Claudin subtype and INTCLUST data
 
-ch_var <- c("HIST", "PAM50", "INTCLUST")
+ch_var <- c("HIST", "INTCLUST", "PAM50")
 
 for (i in ch_var) {
 
@@ -264,20 +279,30 @@ print(proof_genes_pt.cox %>%
 for (i in ch_var) {
   
 
-  p <- ggplot(
+  score_subtype <- ggplot(
     proof_genes_pt.cox,
     aes(x = .data[[i]], y = SCORE, fill = .data[[i]])
   ) +
     geom_boxplot() +
-    scale_fill_paletteer_d("colorBlindness::Blue2Green14Steps") +
+    scale_fill_paletteer_d("Redmonder::dPBIPuOr") +
     facet_wrap(
       ~ EVENT_STAT,
       labeller = labeller(EVENT_STAT = c("0" = "Alive",
                                          "1" = "Deceased"))
     ) +
-    theme_classic()
+    theme_classic(base_size = 22) + 
+    ggtitle("Score change on subtype: METABRIC") +
+    theme(
+      strip.background = element_rect(fill = "black", color = "black", linewidth = 1),
+            strip.text = element_text(color = "white", face = "bold", size = 12),
+      plot.title = element_text(hjust = 0.5),
+      legend.position = "none"
+    ) +
+    labs(y = "", 
+         x = "",
+         tag = "A")
   
-  print(p)
+  print(score_subtype)
 }
 
 
@@ -290,7 +315,14 @@ proof_genes_pt.long<-
     cols = c(SURGERY, CHEMO, HORMONE), 
     names_to = "Parameter",
     values_to = "Value"
-  )
+  ) %>% 
+  mutate(Value = case_when(
+    toupper(Value) == "YES" ~ "Yes",
+    toupper(Value) == "NO"  ~ "No",
+    Value == "BREAST CONSERVING" ~ "Breast conserving",
+    Value == "MASTECTOMY" ~ "Matectomy", 
+    TRUE ~ Value 
+  ))
 
 
 # 6.4 Wilcox test between treatment types
@@ -304,13 +336,15 @@ proof_genes_pt.long %>%
     tidy(test)
   }) %>%
   ungroup() %>% 
-  mutate(adj_p_value = p.adjust(p.value, method = "holm"))
+  mutate(adj_p_value = p.adjust(p.value, method = "holm"),
+         )
 
 # 6.5 Cox analysis of interaction between score and treatment 
 
 tx_vars <- c("CHEMO", "HORMONE", "SURGERY")
 
 for (i in tx_vars) {
+  
   formula <- as.formula(paste("surv_obj ~ ", i, " * SCORE")) # Establish formula
   
   proof_genes_pt.txcox <- 
@@ -321,6 +355,7 @@ for (i in tx_vars) {
            !(.data[[i]] == "") # Filter fod the unregistered surgery
     ) %>% 
     ungroup()
+  
   cox_sum <- summary(coxph(formula , data = proof_genes_pt.txcox))
   print(cox_sum)
   print(i)
@@ -331,10 +366,19 @@ for (i in tx_vars) {
 
 # 6.4.3.2 Plot
 
-ggplot(data = proof_genes_pt.long, aes(y = SCORE, x = Value, fill = Value)) +
+score_tx <- ggplot(data = proof_genes_pt.long, aes(y = SCORE, x = Value, fill = Value)) +
   geom_boxplot() + 
   facet_wrap(~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2,  labeller = labeller(Parameter = c("CHEMO" = "Chemotherapy", "HORMONE" = "Hormone therapy", "SURGERY" = "Surgery Modality"),
                                                                                          EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
-  scale_fill_paletteer_d("colorBlindness::Blue2DarkOrange12Steps") +
-  theme_classic(base_size = 32)
+  scale_fill_paletteer_d("khroma::iridescent", direction = - 1) + 
+  theme_classic(base_size = 15) + 
+  ggtitle("Score change on treatment: METABRIC") +
+  theme(
+    strip.background = element_rect(fill = "black", color = "black", linewidth = 1),
+    strip.text = element_text(color = "white", face = "bold", size = 12),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  ) + 
+  labs(tag = "A",
+       x = "")
 
