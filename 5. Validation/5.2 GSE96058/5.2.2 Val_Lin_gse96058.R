@@ -311,14 +311,15 @@ cox_p_gse96058 <- independent_prog.gse96058[num_param_compare_gse, ] %>%
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
-  labs(x = "Hazard Ratio (log scale)", y = "Clinical & Molecular Features", color = "Significance (p < 0.05)",
+  labs(x = "Hazard Ratio (log scale)", 
+       y = "", 
+       color = "Significance (p < 0.05)",
+       tag = "C"
        ) +
-  theme_classic(base_size = 15) +
+  theme_classic(base_size = 22) +
   ggtitle("Multivariate Cox: Survival GSE96058") +
   theme(plot.title = element_text(hjust = 0.5),
-        legend.background = element_rect(color = "black", fill = "white", linewidth = 0.5), 
-        legend.box.background = element_rect(color = "black", linewidth = 1),
-        legend.key = element_rect(color = "gray80", linewidth = 0.5)) + 
+        legend.position = "none",) + 
   scale_color_manual(values = c("FALSE" = "#68228b", "TRUE" = "#3477FD")) 
 
 # 4.4 Boxplot comparing to PAM50
@@ -328,7 +329,7 @@ score_subtype_gse96058 <- ggplot(proof_genes_pt_gse96058.cox, aes(y = SCORE, x =
   geom_boxplot() +
   facet_wrap(~ EVENT_STAT, 
              labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
-  theme_classic(base_size = 18) + 
+  theme_classic(base_size = 22) + 
   ggtitle("Score change on subtype: GSE96058") +
   theme(
     strip.background = element_rect(fill = "black", color = "black", linewidth = 1),
@@ -337,8 +338,9 @@ score_subtype_gse96058 <- ggplot(proof_genes_pt_gse96058.cox, aes(y = SCORE, x =
     legend.position = "none"
   ) +
   labs(
-    y = "Score", x = "Claudin Subtype",
-       ) + 
+    y = "", 
+    x = "Intrinsic Subtype",
+    tag = "C"   ) + 
   scale_fill_paletteer_d("Redmonder::dPBIPuOr") 
   
 
@@ -400,7 +402,10 @@ score_tx_gse96058 <- ggplot(proof_genes_long.gse96058,
     strip.text = element_text(color = "white", face = "bold", size = 12),
     plot.title = element_text(hjust = 0.5),
     legend.position = "none"
-  ) 
+  ) + 
+  labs(tag = "C",
+       y = "",
+       x  = "")
 
 summary(coxph(surv_obj ~ SCORE * CHEMO, data = proof_genes_pt_gse96058.cox))
 
