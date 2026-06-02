@@ -83,7 +83,7 @@ c_index_summary.tcga <- data.frame(
     conf_int_low95  = C_Index - (1.96 * SE),
     conf_int_high95 = C_Index + (1.96 * SE),
     z_stat  = (C_Index - 0.5) / SE,
-    p_value = 1 - pnorm(z_stat)
+    p_value = 2 * (1 - pnorm(abs(z_stat)))
   )
 
 print(c_index_summary.tcga)
@@ -111,8 +111,8 @@ auc_ci.tcga <- data.frame(
     conf_int_low95  = AUC - (1.96 * SE),
     conf_int_high95 = AUC + (1.96 * SE),
     z_stat  = (AUC - 0.5) / SE,
-    p_value = 1 - pnorm(z_stat)
-  )
+    p_value = 2 * (1 - pnorm(abs(z_stat)))
+      )
 
 # 3.1.1.3 Text
 
@@ -229,7 +229,7 @@ proof_genes_pt.tcga.cox <-
 
 # 4.2 Actual cox model with parameters to evaluare
 
-cox_model.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH + PAM50,  data = proof_genes_pt.tcga.cox)
+cox_model.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH + strata(PAM50) + strata(HER2) + strata(HIST), data = proof_genes_pt.tcga.cox)
 
 summary(coxph(surv_obj ~ AGE + LYMPH + SCORE  ,  data = proof_genes_pt.tcga.cox))
 
@@ -261,10 +261,18 @@ cat(paste0(independent_prog.tcga$term[num_param_compare], " with its HR of ", ro
 
 # 4.5 Forest plot ignoring values that tend to infinite
 
-independent_prog.tcga %>%
+cox_p_tcga <- independent_prog.tcga %>%
   filter(estimate > 0.0001,
          conf.high < 100) %>%
   mutate(
+    
+    term = recode_values(
+      term,
+      "SCORE"              ~ "Signature Score",
+      "LYMPH"              ~ "Lymph Node Status",
+      "AGE"                ~ "Age at Diagnosis",
+      default = term 
+    ),
     term = reorder(term, p.value),
     significant = p.value < 0.05
   ) %>%
@@ -273,7 +281,12 @@ independent_prog.tcga %>%
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.5, linewidth = 1.2) +
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
-  theme_minimal()
+  theme_classic(base_size =15) +
+  ggtitle("Multivariate Cox: Survival TCGA") +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none") + 
+  scale_color_manual(values = c("FALSE" = "#68228b", "TRUE" = "#3477FD")) + 
+  labs(x = "Hazard Ratio (log scale)", y = "Clinical & Molecular Features", color = "Significance (p < 0.05)")
 
 
 # 5.- Other analysis ------------------------------------------------------
@@ -282,14 +295,21 @@ independent_prog.tcga %>%
 # 5.1.2 Boxplot comparing to PAM50 facet wrapped by event status
 
 
-ggplot(proof_genes_pt.tcga.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
+score_subtype_tcga <- ggplot(proof_genes_pt.tcga.cox, aes(y = SCORE, x = PAM50, fill = PAM50)) +
   geom_boxplot() +
-  paletteer::scale_fill_paletteer_d("colorBlindness::Blue2Green14Steps") +
   facet_wrap(~ EVENT_STAT,
              scales = "free_x",
              labeller = labeller(EVENT_STAT = c("0" = "Alive", "1" = "Deceased"))) + 
-  theme_classic() + 
-  geom_vline(xintercept = 7)
+  theme_classic(base_size = 18) + 
+  ggtitle("Score change on subtype: TCGA") +
+  theme(
+    strip.background = element_rect(fill = "black", color = "black", linewidth = 1),
+    strip.text = element_text(color = "white", face = "bold", size = 12),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  ) +
+  labs(Y = "Score", X = "Claudin Subtype") + 
+  scale_fill_paletteer_d("Redmonder::dPBIPuOr") 
 
 
 # 5.2 Wilcoxon test where on each treatment modality or PAM50 group we compare deceased vs live patients (so if we have patients that recieved chemo we compare the score on patients that lived vs died and then on those who did not recieve chemo and so on with every treatment)
@@ -342,30 +362,45 @@ proof_genes_pt.tcga_long <-
     cols = c(NEO, SURGERY, RADIO, TARG_TX), # Add any other parameters here
     names_to = "Parameter",
     values_to = "Value"
+  ) %>% 
+  mutate(
+    Value = case_when(
+      toupper(Value) == "YES" ~ "Yes",
+      toupper(Value) == "NO"  ~ "No",
+      TRUE ~ Value # Keeps things like "Lumpectomy" and "NA" untouched
+    ),
+    Value = case_when(
+      tolower(Value) == "mastectomy nos" ~ "Mastectomy",
+      tolower(Value) == "modified radical mastectomy" ~ "Modified Radical Mastectomy",
+      TRUE ~ str_to_title(Value) # Capitalizes first letter of other categories like "Lumpectomy", "Other"
+    )
   )
 
 # 5.3.2 Plot
 
 
-ggplot(data = proof_genes_pt.tcga_long, aes(y = SCORE, x = Value, fill = Value)) +
+score_tx_tcga <- ggplot(data = proof_genes_pt.tcga_long, aes(y = SCORE, x = Value, fill = Value)) +
   geom_boxplot() +
   facet_wrap( ~ Parameter + EVENT_STAT, scales = "free_x", ncol = 2, labeller = labeller(
     EVENT_STAT = as_labeller(c(
       "0" = "Alive", "1" = "Deceased")
     ),
-    Parameter  = as_labeller(c("NEO" = "Neoadjuvant therapy", "RADIO" = "Radiotherapy", "SRUGERY" = "Surgery modality", "TARG_TX" = "Targeted treatment"))
+    Parameter  = as_labeller(c("NEO" = "Neoadjuvant therapy", "RADIO" = "Radiotherapy", "SURGERY" = "Surgery modality", "TARG_TX" = "Targeted treatment"))
   )) +
-  scale_fill_paletteer_d("colorBlindness::Blue2DarkOrange12Steps") +
-  theme_classic(base_size = 28) +
-  labs(x = "Treatment/Parameter Value", fill = "Treated", title = "Score on treatment modalities across vital status") +
+  scale_fill_paletteer_d("khroma::iridescent", direction = - 1,
+                         labels = function(x) str_to_title(x)) + 
+  theme_classic(base_size = 11) +
+  labs(x = "Treatment/Parameter Value", fill = "Treated") +
   scale_x_discrete(labels = c("0" = "Untreated", "1" = "Treated")) +
+  ggtitle("Score change on treatment: TCGA") +
   theme(
-    axis.title = element_text(size = 24),
-    axis.text = element_text(size = 12),
-    strip.text = element_text(size = 20),
-    legend.text = element_text(size = 18),
-    legend.title = element_text(size = 18)
+    strip.background = element_rect(fill = "black", color = "black", linewidth = 1),
+    strip.text = element_text(color = "white", face = "bold", size = 12),
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+    
   )
+
 # 5.4 Cox based on treatment
 
 for (i in vars) {
@@ -375,187 +410,6 @@ for (i in vars) {
   print(i)
 }
 
-
-
-# 6.- Outlier analysis ----------------------------------------------------
-
-
-# 6.1 Utilize the fitted object to make predictions based on time
-
-# 6.1.1 Change to numeric
-
-tcga_results$EVENT_STAT <- as.numeric(as.character(tcga_results$EVENT_STAT))
-
-# 6.1.2 Augment on different time points
-
-model_diagnostics <- augment(
-  final_fit, 
-  new_data = tcga_results, 
-  eval_time = c(36, 60, 120) # Times in months (3, 5, 10 years)
-)
-
-# 6.2 Create list to then add the results
-
-list <- list()
-
-
-#> 6.3 For loop that at each desired time point calculates the bias scores, extracts patients with high bias scores
-#> observe metadata of outlier patients and plot the distribution of the prediction with the actual event time
-
-for (i in c(36, 60, 120)) {
-  
-  eval_time <- i
-  
-  # 6.3.1 Unnest the predictions and find the biggest outliers on a set point and event
-  
-  outliers <- model_diagnostics %>%
-    dplyr::select(sampleID, EVENT_MON, EVENT_STAT, .pred, .pred_time) %>%
-    unnest(.pred) %>%
-    filter(.eval_time == eval_time) %>% 
-    arrange(desc(.pred_survival)) # Siunce our signature as it goes up, the predicted mortality goes down we see which patients died early who were predicted to die late or survive
-  
-  
-  # 6.3.2 Object with metadata and score characteristics
-  
-  outlier_summary <- outliers %>%
-    inner_join(refined_data_unique, by = "sampleID", suffix = c("", ".drop")) %>%
-    dplyr::select(
-      sampleID, 
-      .pred_survival, 
-      EVENT_STAT, 
-      EVENT_MON, 
-      PAM50Call_RNAseq, 
-      lymph_node_examined_count, 
-      .eval_time,
-      RADIO,
-      NEO,
-      OTHER_TX,
-      TARG_TX,
-      SURGERY,
-      .pred_time
-    ) 
-  
-  
-  # 6.3.3 Create bias score for defined time
-  
-  outliers_bias <- outlier_summary %>%
-    mutate(
-      bias_score = (((1 - EVENT_STAT) - .pred_survival) ^ 2) * ((EVENT_MON - .eval_time) * ( 1 - 2 * (EVENT_STAT)))
-    ) %>%
-    arrange(desc(bias_score))
-  
-  # 6.4 Identify the highest bias patients
-  
-  # 6.4.1 Obtain mean and sd and then filter baed on patients higher than determined SD
-  
-  extreme_outliers <- 
-    outliers_bias %>% 
-    mutate(mean_bias = mean(bias_score),
-           sd_bias = sd(bias_score)) %>% 
-    filter(bias_score > (mean_bias + 2 * sd_bias))
-  
-  # 6.4.2 Obtain their IDs
-  
-  top_bias_ids <- extreme_outliers$sampleID
-  
-  print(length(top_bias_ids))
-  
-  # 6.4.3 Identify different characteristics of patients identified as top bias
-  
-  print(outliers_bias %>%
-          filter(sampleID %in% top_bias_ids) %>% 
-          group_by(PAM50Call_RNAseq, EVENT_STAT) %>%
-          summarise(
-            count = n(),
-            avg_pred_event = mean(.pred_survival),
-            avg_event_time = mean(EVENT_MON)
-          ) %>%
-          arrange(desc(count))
-  )
-  
-  # 6.5.1 Add a column identifying patients as top bias or not
-  
-  outliers <- 
-    outliers %>% 
-    mutate(quadrant = case_when(
-      (sampleID %in% top_bias_ids & EVENT_STAT == 0) ~ 2,
-      (sampleID %in% top_bias_ids & EVENT_STAT == 1) ~ 1,
-      !(sampleID %in% top_bias_ids) ~ 0
-    ))
-  
-  print(outliers %>% 
-          group_by(EVENT_STAT) %>% 
-          dplyr::count(quadrant))
-  
-  # 6.5.2 Plot
-  
-  theme_embedded <- theme_classic(base_size = 25) + 
-    theme(
-      legend.position = c(0.95, 0.3), # Adjust coordinates (x, y) from 0 to 1
-      legend.background = element_rect(fill = alpha("white", 0.5))
-    )
-  
-  # 6.5.2.1 Plot colored by EVENT_STAT
-  
-  p1 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(EVENT_STAT), shape = factor(EVENT_STAT))) +
-    geom_point(size = 2, alpha = 0.7) + # Increased size and opacity
-    stat_ellipse(type = "t", level = 0.95) + # Adds 95% confidence ellipse
-    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-    scale_color_viridis_d() + 
-    labs(
-      title = "Event Status Distribution",
-      x = paste0("Actual Event Time (Months)", eval_time),
-      y = "Predicted Survival",
-      color = "Event Stat",
-      shape = "Event Stat"
-    ) +
-    theme_embedded
-  
-  # 6.5.2.2 Plot colored by quadrant
-  
-  p2 <- ggplot(outliers, aes(x = EVENT_MON, y = .pred_survival, color = factor(quadrant), shape = factor(EVENT_STAT))) +
-    geom_point(size = 2, alpha = 0.7) +
-    stat_ellipse(aes(group = quadrant), type = "t", level = 0.95) + 
-    geom_vline(xintercept = eval_time, linetype = "dashed", color = "red") +
-    scale_color_viridis_d() + 
-    labs(
-      title = "Quadrant Analysis",
-      x = paste0("Actual Event Time (Months)", eval_time),
-      y = "Predicted Survival",
-      color = "Quadrant",
-      shape = "Event Stat"
-    ) +
-    theme_embedded
-  
-  # 6.5.3 Combine and stack
-  
-  print( p1 + p2)
-  
-  list[[i]] <- top_bias_ids
-  
-}
-
-
-# 2.8 Obtain patients found on all of the iterations of the for loop as top bias patients
-
-bias_interesct.tcga <- intersect(intersect(list[[36]], list[[60]]) , list[[120]])
-
-# 2.8.2 Similar but all unique so even if they appear once we register them
-
-bias_diff_id.tcga <- unique(c(list[[36]], list[[60]], list[[120]]))
-
-print(outliers_bias %>%
-  filter(sampleID %in% bias_diff_id.tcga) %>% 
-  group_by(EVENT_STAT, RADIO, NEO, TARG_TX, OTHER_TX, SURGERY) %>%
-  summarise(
-    count = n(),
-    avg_bias = mean(bias_score),
-    avg_pred_event = mean(.pred_survival),
-    avg_event_time = mean(EVENT_MON),
-    avg_pred_time = mean(.pred_time)
-  ) %>%
-  arrange(desc(EVENT_STAT)),
-n = 100)
 
 # 7.- Other scores --------------------------------------------------------
 
