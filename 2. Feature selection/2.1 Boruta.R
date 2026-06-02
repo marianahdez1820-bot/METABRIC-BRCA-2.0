@@ -63,7 +63,7 @@ impRangerSurv <- function(x, y, ...) {
     dependent.variable.name = "target_surv", 
     data = temp_df, # Data frame created before
     importance = "permutation", 
-    num.trees = 100,            # 100 for speed
+    num.trees = 500,            
     num.threads = 16,            # Ensure threads are passed here
     ...
   )
