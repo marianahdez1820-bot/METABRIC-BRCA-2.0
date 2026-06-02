@@ -50,10 +50,8 @@ lr_mod <- proportional_hazards(
   penalty = tune(),    # lambda establishes the severith of the penalty
   mixture = tune()     # alpha establishes the type, 1 being lasso, 0 being ridge, and 0.5 being elasticnet
 ) %>%
-  set_engine("glmnet", # Engine that permits penalizing by elasticnet, ridge, and lasso
-            cox.ties = "efron") 
-
-
+  set_engine("glmnet",
+             cox.ties = "breslow") # Engine that permits penalizing by elasticnet, ridge, and lasso
 
 # 2.3 Workflow
 
@@ -65,43 +63,43 @@ lr_wf <- workflow() %>%
 # 3.- Selecting best penalizing parameters ------------------------------------
 
 if(!exists("best_params")){
-
-set.seed(123)
-
-# 3.1 Folds for evaluating with resamples
-
-folds <- vfold_cv(
-  train_data,
-  v = 10,
-  strata = EVENT_STAT
-)
-
-# 3.2 Grid for penalizing range
-
-grid <- grid_regular(
-  penalty(range = c( - 4, 1)),   
-  mixture(range = c(0, 1)),
-  levels = 10
-)
-
-# 3.3 Running the different penalization methods
-
-res_ml <- tune_grid(
-  lr_wf,
-  resamples = folds,
-  grid = grid,
-  metrics = metric_set(concordance_survival), # Evaluates the different penalizing methods by c score
-  control = control_grid(save_pred = TRUE)
-)
-
-# 3.3.1 Observe metrics
-
-collect_metrics(res_ml)
-
-# 3.3.2 Object with best parameters for penalizing
-
-best_params <- select_best(res_ml, metric = "concordance_survival")
-
+  
+  set.seed(123)
+  
+  # 3.1 Folds for evaluating with resamples
+  
+  folds <- vfold_cv(
+    train_data,
+    v = 10,
+    strata = EVENT_STAT
+  )
+  
+  # 3.2 Grid for penalizing range
+  
+  grid <- grid_regular(
+    penalty(range = c( - 4, 1)),   
+    mixture(range = c(0, 1)),
+    levels = 10
+  )
+  
+  # 3.3 Running the different penalization methods
+  
+  res_ml <- tune_grid(
+    lr_wf,
+    resamples = folds,
+    grid = grid,
+    metrics = metric_set(concordance_survival), # Evaluates the different penalizing methods by c score
+    control = control_grid(save_pred = TRUE)
+  )
+  
+  # 3.3.1 Observe metrics
+  
+  collect_metrics(res_ml)
+  
+  # 3.3.2 Object with best parameters for penalizing
+  
+  best_params <- select_best(res_ml, metric = "concordance_survival")
+  
 }else{
   print("Parameter selected on MC cross validation")
 }
@@ -269,9 +267,9 @@ test_data <-
   mutate(EVENT_STAT = factor(EVENT_STAT))
 
 global_roc <- roc_curve(test_data,
-          EVENT_STAT,
-          risk_score
-          ) %>%
+                        EVENT_STAT,
+                        risk_score
+) %>%
   mutate(label = "METABRIC")
 
 
@@ -375,11 +373,11 @@ proof_genes_pt.cox <-
 coxph(surv_obj ~ AGE + LYMPH + SCORE, 
       data = proof_genes_pt.cox)
 
-cox_model <- coxph(surv_obj ~ NPI + HORMONE + CHEMO + SURGERY + MENO + strata(HER2) + AGE + LYMPH + SCORE +  PAM50 + INTCLUST + HIST, 
+cox_model <- coxph(surv_obj ~ NPI + HORMONE + CHEMO + strata(SURGERY) + MENO + strata(HER2) + AGE + SCORE +  PAM50 + strata(INTCLUST) + strata(HIST), 
                    data = proof_genes_pt.cox)
 
-summary(coxph(surv_obj ~ MENO + AGE + LYMPH + SCORE, 
-      data = proof_genes_pt.cox))
+summary(coxph(surv_obj ~ AGE + LYMPH + SCORE, 
+              data = proof_genes_pt.cox))
 
 
 summary(cox_model)
@@ -392,9 +390,9 @@ independent_prog <- cox_model %>%
 
 # 9.- Results -------------------------------------------------------------
 
-# 9.1 Index number of the parameters to print the evaluation and to g   raph
+# 9.1 Index number of the parameters to print the evaluation and to graph
 
-num_param_compare <- c(2:50)
+num_param_compare <- c(1, 2, 3, 5, 6, 9, 10)
 
 # 9.2 Concatenate strings with the respective result
 
@@ -409,23 +407,65 @@ cat(paste0("Signature with ", length(coef_tbl$term), " genes (", paste(coef_tbl$
 
 cat(paste0(independent_prog$term[num_param_compare], " with its HR of ", round(independent_prog$estimate[num_param_compare], 2), " (CI 95% of ", round(independent_prog$conf.low[num_param_compare], 2), " - ", round(independent_prog$conf.high[num_param_compare], 2), " pval of ", independent_prog$p.value[num_param_compare], ")"),
     sep = ". "
-    )
+)
 
 # 9.3 Forest plot of the evaluated parameters
 
-independent_prog %>%
-  filter(estimate > 0.0001, # Since there are values that tend to infinite we filter them ouit
-         conf.high < 100) %>%
+
+cox_p_metabric <- independent_prog[num_param_compare, ] %>%
+  filter(
+    estimate > 0.0001,
+    conf.high < 100
+  ) %>%
   mutate(
+    term = recode_values(
+      term,
+      "SCORE"              ~ "Signature Score",
+      "LYMPH"              ~ "Lymph Node Status",
+      "AGE"                ~ "Age at Diagnosis",
+      "NPI"                ~ "Nottingham Prognostic Index",
+      "CHEMOYES"           ~ "Chemotherapy (Yes)",
+      "HORMONEYES"         ~ "Hormone Therapy (Yes)",
+      "SURGERYMASTECTOMY"  ~ "Mastectomy",
+      "PAM50LumA"          ~ "Claudin subtype Luminal A",
+      "PAM50LumB"          ~ "Claudin subtype Luminal B",
+      "PAM50Her2"          ~ "Claudin subtype Her2-enriched",
+      "PAM50claudin-low"   ~ "Claudin subtype Claudin-low",
+      "PAM50Normal"        ~ "Claudin subtype Normal-like",
+      "HISTMucinous"       ~ "Histology: Mucinous",
+      "HISTMixed"          ~ "Histology: Mixed",
+      "HISTLobular"        ~ "Histology: Lobular",
+      "HISTMedullary"      ~ "Histology: Medullary",
+      "INTCLUST2"          ~ "IntClust 2",
+      "INTCLUST3"          ~ "IntClust 3",
+      "INTCLUST5"          ~ "IntClust 5",
+      "INTCLUST6"          ~ "IntClust 6",
+      "INTCLUST7"          ~ "IntClust 7",
+      "INTCLUST8"          ~ "IntClust 8",
+      "INTCLUST9"          ~ "IntClust 9",
+      "MENOPre" ~ "Premenopause",
+      default = term 
+    ),
     term = reorder(term, estimate),
     significant = p.value < 0.05
   ) %>%
   ggplot(aes(x = estimate, y = term, color = significant)) +
   geom_point() +
-  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), width = 0.5, linewidth = 1.2) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high),
+                width = 0.5,
+                linewidth = 1.2) +
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
-  theme_minimal()
-
+  labs(x = "Hazard Ratio (log scale)", y = "Clinical & Molecular Features", color = "Significance (p < 0.05)") +
+  theme_classic(base_size = 22) +
+  ggtitle("Multivariate Cox: Survival METABRIC") +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none",
+        ) + 
+  scale_color_manual(values = c("FALSE" = "#68228b", "TRUE" = "#3477FD")) + 
+  labs(x = "Hazard Ratio (log scale)", 
+       y = "", 
+       color = "Significance (p < 0.05)",
+       tag = "A")
 
 
