@@ -1,10 +1,7 @@
 library(survival)
 
-
 # In this file we prepare the data for the linear regression model using onl ER+ patients
 # and with survival parameters
-
-#boruta_signature <- c("SLC7A2", "CXCL14", "LAD1", "UBE2C", "FCER1A", "INAVA", "COL17A1", "CBX2", "TMEM26", "CDC20", "KIF1A", "ELOVL5", "CDCA5", "PTTG1", "UHRF1", "ZIC2", "WDR72", "BIRC5", "PRC1", "NUSAP1", "RPL26", "AURKA", "TMEM132A", "NKX2.2", "CDC45", "SLC4A8", "CENPF", "ADGRG1", "KIF20A", "ADIPOR2", "CD1E", "PXDNL", "TPX2", "TROAP", "CACNG1", "FAM83D", "EXO1", "ZNF148", "EZR", "SOSTDC1", "FEN1", "COL4A1", "RACGAP1", "KIF2C", "CCNA2", "FOXM1", "CNST", "CKAP2L", "DBN1", "STAT5A", "TDG", "PSMD3", "RRBP1", "RNF24", "TCL1B", "STIP1", "HHEX", "GSK3B", "YBEY", "ATP2A2", "CNIH2", "KIF4A", "ZC3H11A", "TRIM4", "EXT1", "UBE2O", "TBC1D31", "ZMIZ1", "ENO1", "CUL5", "SLC2A4RG", "SHMT2", "AK3", "MICU2", "DIRAS3", "GSTK1", "ACADS", "FLT3", "CCT6B", "C14orf184", "PIGV", "KIF14", "TMEM60", "GTSE1", "SPTBN2", "PSMD2", "GAS2L3", "SPOPL", "SEC62", "MAP2K7", "LARP1", "HMGCR", "NT5M", "HYI", "CNTF", "C11orf71")
 
 label <- " For predicting survival in ER positive patients from METABIC cohort"
 
