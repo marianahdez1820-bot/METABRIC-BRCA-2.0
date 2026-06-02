@@ -1,29 +1,15 @@
 library(Boruta)
 library(survival)
-library(dplyr)
-library(tibble)
 library(parallel)
 library(ranger)
 
 
-# 1. Increase to handle high-dimensional data ------------------
-
-options(expressions = 500000)
-
 # 2.- Metadata Preparation (Filtering for ER+) ------------------
 
-boruta_metadata <- metadata %>% 
+boruta_metadata <- er_patients_surv %>% 
   as.data.frame() %>% 
-  mutate(
-    SURVIVAL = as.numeric(RECURR_STAT),
-    SURVIVAL_MON = as.numeric(RFS_MONTHS)
-  ) %>% 
-  filter(
-    SURVIVAL_MON > 0,
-    ER_IHC == "Positve"  # Keep only ER+ patients
-  ) %>% 
-  drop_na(SURVIVAL, SURVIVAL_MON) %>% # Eliminate rows with NAs
-  dplyr::select(PATIENT_ID, SURVIVAL, SURVIVAL_MON) # Select columns to create outcome and to identify patients
+  drop_na(EVENT_STAT, EVENT_MON) %>% # Eliminate rows with NAs
+  dplyr::select(PATIENT_ID, EVENT_STAT, EVENT_MON) # Select columns to create outcome and to identify patients
 
 # 3. Align Expression Data & Feature Engineering ------------------
 
@@ -36,20 +22,15 @@ boruta_df <- counts_data[, boruta_metadata$PATIENT_ID] %>%
   left_join(boruta_metadata, by = "PATIENT_ID") %>% # Joint with metadata to have the counts, and the objects for survival analysis
   column_to_rownames("PATIENT_ID")
 
+
 # 3.2 Create the Survival Object
 
-boruta_df$surv_obj <- Surv(time = boruta_df$SURVIVAL_MON, event = boruta_df$SURVIVAL)
+boruta_df$surv_obj <- Surv(time = boruta_df$EVENT_MON, event = boruta_df$EVENT_STAT)
 
 # 3.3 Remove the survival columns that do not correspond to the surv_obj
 
 boruta_df <- boruta_df %>% 
-  dplyr::select(-SURVIVAL, -SURVIVAL_MON)
-
-# 4. Handle Missing Values (Required for Ranger) ------------------
-
-for(i in which(colSums(is.na(boruta_df)) > 0)) {
-  boruta_df[is.na(boruta_df[,i]), i] <- median(boruta_df[,i], na.rm = TRUE)
-}
+  dplyr::select( - EVENT_STAT, - EVENT_MON) 
 
 # 5. Variance Filtering (Top 3000 genes) ------------------------
 
@@ -59,7 +40,7 @@ vars <- apply(boruta_df[, setdiff(colnames(boruta_df), "surv_obj")], 2, var)
 
 # 5.2 Sort based on variance and select top 3000 genes
 
-top_genes <- names(sort(vars, decreasing = TRUE))[1:3000]
+top_genes <- names(sort(vars, decreasing = TRUE))[1:7000]
 
 # 5.2.2 Maintain only genes that correspond to the top 3000 and the surv object
 
@@ -68,6 +49,10 @@ boruta_df_small <- boruta_df[, c(top_genes, "surv_obj")]
 # 5.3 Fix any non-standard gene names 
 
 colnames(boruta_df_small) <- make.names(colnames(boruta_df_small))
+
+write.csv(boruta_df_small, "C:/R/METABRIC/Files/Boruta/boruta_df.csv")
+
+x <- read.csv("C:/R/METABRIC/Files/Boruta/boruta_df.csv")
 
 # 6. Parallel Function  ---------------------------------
 
@@ -83,7 +68,7 @@ impRangerSurv <- function(x, y, ...) {
     data = temp_df, # Data frame created before
     importance = "permutation", 
     num.trees = 100,            # 100 for speed
-    num.threads = 8,            # Ensure threads are passed here
+    num.threads = 16,            # Ensure threads are passed here
     ...
   )
   return(res$variable.importance)
@@ -105,7 +90,7 @@ boruta.signature <- Boruta(
   x = x_data,
   y = y_data,
   getImp = impRangerSurv, 
-  doTrace = 2
+  doTrace = 3
 )
 
 #  8. View Results ------------------
@@ -136,10 +121,10 @@ final_boruta_decided <- TentativeRoughFix(boruta.signature)
 
 final_boruta_decided$finalDecision[final_boruta_decided$finalDecision == "Confirmed"]
 
-saveRDS(boruta.signature, paste0(out_path, "boruta_decided.rds"))
+saveRDS(boruta.signature, paste0(out_path, "boruta_surv_decided.rds"))
 
 # 2. Save the final model object
-saveRDS(final_boruta_decided, paste0(out_path, "final_boruta_decided.rds"))
+saveRDS(final_boruta_decided, paste0(out_path, "final_boruta_surv_decided.rds"))
 
 stats <- attStats(boruta.signature)
 
@@ -148,11 +133,11 @@ stats <- attStats(boruta.signature)
 final_gene_names <- getSelectedAttributes(final_boruta_decided)
 
 # 4. Save the gene list as a CSV
-write.csv(final_gene_names, paste0(out_path, "final_gene_signature.csv"), row.names = FALSE)
+write.csv(final_gene_names, paste0(out_path, "final_gene_surv_signature.csv"), row.names = FALSE)
 
 # 5. Export the importance values (the numbers used in your plot)
 stats <- attStats(final_boruta_decided)
-write.csv(stats, paste0(out_path, "gene_importance_full_stats.csv"))
+write.csv(stats, paste0(out_path, "gene_surv_importance_full_stats.csv"))
 
 
 # 9.- Load data ---------------------------
@@ -164,3 +149,5 @@ final_boruta <- readRDS(paste0(out_path, "final_boruta_decided.rds"))
 print(final_boruta)
 
 final_boruta_decided$finalDecision
+
+cat(final_gene_names, sep = ", ")
