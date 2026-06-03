@@ -30,7 +30,7 @@ library(survminer)
 
 
 gse96058_results <- gse96058_results %>%
-  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < true_cut$cutpoint$cutpoint[1], "High Risk", "Low Risk")))
+  mutate(risk_group = as.factor(ifelse(.pred_linear_pred < true_cut$cutpoint$cutpoint[1], "High Risk", "Low Risk")))  # median(.pred_linear_pred) # true_cut$cutpoint$cutpoint[1]
 
 
 # 2.2 Fit the KM curve
@@ -56,12 +56,12 @@ ggsurvplot(km_fit.gse96058,
            xlab = "Time (months)",
            
            ylim = c(0.7, 1),
-           xlim = c(0, 85),         # Zoom in
-           break.time.by = 10,      # X axis breaks
-           ggtheme = theme_minimal(), # ggplot2 theme
+           xlim = c(0, 85),         
+           break.time.by = 10,      
+           ggtheme = theme_minimal(), 
            
-           linewidth = 3,                 # Line size
-           palette = c("#E41A1C", "#377EB8"), # Custom color palette
+           linewidth = 3,                 
+           palette = c("#E41A1C", "#377EB8"), 
            
 )
 
