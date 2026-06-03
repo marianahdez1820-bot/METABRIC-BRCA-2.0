@@ -3,7 +3,7 @@ p1 <-  ggsurvplot(fit_km,
            risk.table = TRUE,
            risk.table.fontsize = 3,
            
-           title = "Recurrence ER+ METABRIC",
+           title = "Recurrence METABRIC",
            ylab = "Recurrence probability",
            font.title = 22,
            legend = "bottom",
@@ -74,10 +74,11 @@ p3 <- ggsurvplot(km_fit.tcga,
 
 
 
-# Put your plots into a list
+# Plots into a list
+
 plot_list <- list(p1, p2, p3)
 
-# Arrange them in a grid (e.g., 1 row, 3 columns)
+# Arrange them in a grid 
 res <- arrange_ggsurvplots(plot_list, 
                            print = TRUE, 
                            ncol = 3, 
