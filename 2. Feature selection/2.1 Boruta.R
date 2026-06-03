@@ -86,7 +86,8 @@ boruta.signature <- Boruta(
   x = x_data,
   y = y_data,
   getImp = impRangerSurv, 
-  doTrace = 3
+  doTrace = 3,
+  maxRuns = 500
 )
 
 #  8. View Results ------------------
