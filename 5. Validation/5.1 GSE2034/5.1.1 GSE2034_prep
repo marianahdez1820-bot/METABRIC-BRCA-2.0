@@ -4,10 +4,8 @@ library(oligo)
 library(GEOquery)
 library(tidyverse)
 library(limma)
-library(hgu133plus2.db)
-library(gridExtra)
-library(readr)
-library(dplyr)
+library(hgu133a.db)
+
 
 
 
@@ -22,7 +20,7 @@ library(dplyr)
 
 # 1.1.3 Listing .cel files
 
-cel_files <- list.celfiles("~/Documents/Servicio_Social/R.project/MyRProject/METABRIC_project/Validation GSE2034 data/GSE2034", full.names = TRUE, listGzipped = TRUE)
+cel_files <- list.celfiles("D:/gse2034/GSE2034/", full.names = TRUE, listGzipped = TRUE)
 
 # 1.1.4 Reading in cel files
 
@@ -32,7 +30,7 @@ raw_data <- pre_raw_data
 
 # 1.2 metadata_GSE2034 
 
-pre_metadata <- read.delim("~/Documents/Servicio_Social/R.project/MyRProject/METABRIC_project/Validation GSE2034 data/GSE2034_metadata", sep = ",")
+pre_metadata <- read.delim("C:/R/METABRIC/Validation/GSE2034/Metadatos/GSE2034_metadata", sep = ",")
 metadata_gse.2034 <- pre_metadata
 
 #> pData of raw_data initially only contains the id for the counts and an index
@@ -63,7 +61,9 @@ metadata_gse.2034  <- metadata_gse.2034  %>%
                 ER_STAT,
                 id,
                 BRAIN_REL,
-                LYMPH)
+                LYMPH
+                
+  )
 
 # 3.2 Object with the names of each file
 
@@ -85,7 +85,7 @@ pData(raw_data) <-
   column_to_rownames("comp_file_name") 
 
 
-metadata_gse.2034  <- pData(raw_data) # Make sure they have the same data this so that metadata also has the identifiers with .CEL.gz to match with the counts
+metadata_gse.2034  <- pData(raw_data) # Make shure they have the same data this so that metadata also has the identifiers with .CEL.gz to match with the counts
 
 
 # 4.- Preprocess data -----------------------------------------------------
@@ -109,7 +109,6 @@ expr_matrix <- exprs(norm_data)
 
 # 5.1 Get mapping to change probe ids to gene names
 
-library(hgu133a.db)
 
 probe_gene <- AnnotationDbi::select(
   hgu133a.db, # The probe identifiers for this affymetrix
@@ -139,18 +138,16 @@ gene_expres_matrix <-
 
 # 5.3.3 Convert to a data frame so to add clinical columns
 
-proof_genes_pt_gse2034 <- as.data.frame(gene_expres_matrix)
+proof_genes_pt.gse2034 <- as.data.frame(gene_expres_matrix)
 
-# 5.4 Keep only ER+ patients and filter by time limits
+# 5.4 Keep only ER+ patients
 
 metadata.gse.2034_er_pos <- metadata_gse.2034  %>% 
-  as.data.frame() %>% 
-  filter(ER_STAT == "ER+") %>% 
-  filter(EVENT_MON <= 180 & EVENT_MON >= 2) 
+  filter(ER_STAT == "ER+")
 
 # 5.5 Keep oly patients that are found on the metadata
 
-proof_genes_pt_gse2034 <- proof_genes_pt_gse2034[,colnames(proof_genes_pt_gse2034) %in% metadata.gse.2034_er_pos$file_name] %>% 
+proof_genes_pt.gse2034 <- proof_genes_pt.gse2034[,colnames(proof_genes_pt.gse2034) %in% metadata.gse.2034_er_pos$file_name] %>% 
   as.data.frame() %>% 
   t() 
 
@@ -158,14 +155,14 @@ proof_genes_pt_gse2034 <- proof_genes_pt_gse2034[,colnames(proof_genes_pt_gse203
 
 # 4.1 List of genes described in the differential expression as being of prognosis for late death
 
-colnames(proof_genes_pt_gse2034) <- make.names(colnames(proof_genes_pt_gse2034))
+colnames(proof_genes_pt.gse2034) <- make.names(colnames(proof_genes_pt.gse2034))
 
-common_genes_meta.gse2034 <- intersect(proof_genes, colnames(proof_genes_pt_gse2034))
+common_genes_meta.gse2034 <- intersect(proof_genes, colnames(proof_genes_pt.gse2034))
 
 
 # 4.2 Object with all the patients and expression of only the genes of interest
 
-proof_genes_pt_gse2034 <- proof_genes_pt_gse2034[,colnames(proof_genes_pt_gse2034) %in% common_genes_meta.gse2034]
+proof_genes_pt.gse2034 <- proof_genes_pt.gse2034[,colnames(proof_genes_pt.gse2034) %in% common_genes_meta.gse2034]
 
 # 4.3 Stop running if there are less genes in gse2034 than on the signature
 
@@ -176,13 +173,10 @@ if(length(common_genes_meta.gse2034) < length(proof_genes)){
 }
 
 
-
-library(survival)
-
 # Keep only genes to analyze and join with the metadata.gse.2034_er_pos that was cleaned earlier
 
-proof_genes_pt_gse2034 <- 
-  proof_genes_pt_gse2034[,proof_genes] %>% # Keep only the genes to test
+proof_genes_pt.gse2034 <- 
+  proof_genes_pt.gse2034[,proof_genes] %>% # Keep only the genes to test
   as.data.frame() %>% 
   rownames_to_column("file_name") %>%
   left_join(metadata.gse.2034_er_pos, by = "file_name") %>% # Join with metadata
@@ -194,10 +188,11 @@ proof_genes_pt_gse2034 <-
                 - id,
                 - ER_STAT,
                 - BRAIN_REL,
-                - LYMPH)
+                -LYMPH) %>% 
+  filter(EVENT_MON >= 2 & EVENT_MON <= 180)
 
 
-proof_genes_pt_gse2034 <- proof_genes_pt_gse2034 %>% 
+
+
+proof_genes_pt.gse2034 <- proof_genes_pt.gse2034 %>% 
   mutate(across(-c(EVENT_MON, EVENT_STAT, surv_obj), scale))
-
-
