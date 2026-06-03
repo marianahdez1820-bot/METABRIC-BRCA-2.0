@@ -170,7 +170,7 @@ summary_cscore <- resamples_cscore %>%
   summarise(
     mean_c    = mean(.estimate),
     median_c  = median(.estimate),
-    sd_c      = sd(.estimate),  # This is your true Standard Error
+    sd_c      = sd(.estimate),  
     n         = n(),
     q2.5  = quantile(.estimate, probs = 0.025),
     q97.5  = quantile(.estimate, probs = 0.975),
@@ -184,7 +184,7 @@ summary_auc <- resamples_auc %>%
   summarise(
     mean_auc   = mean(.estimate),
     median_auc = median(.estimate),
-    sd_auc     = sd(.estimate), # This is your true Standard Error
+    sd_auc     = sd(.estimate), 
     n          = n(),
     q2.5   = quantile(.estimate, probs = 0.025),
     q97.5   = quantile(.estimate, probs = 0.975),
