@@ -1,4 +1,6 @@
 library(survminer)
+library(timeROC)
+
 
 # 1.- Validation ----------------------------------------------------------
 
@@ -31,16 +33,16 @@ print(c_index_summary.gse2034)
 
 
 
-# Create risk groups based on the median of the predictions
+# 1.4 Create risk groups based on the median of the predictions
 
 gse2034_results <- gse2034_results %>%
   mutate(risk_group = as.factor(ifelse(.pred_linear_pred < true_cut$cutpoint$cutpoint[1], "High Risk", "Low Risk"))) # median(.pred_linear_pred) # true_cut$cutpoint$cutpoint[1]
 
-# Fit the KM curve
+# 1.5 Fit the KM curve
 
 km_fit.gse2034 <- survfit(Surv(EVENT_MON,  EVENT_STAT) ~ risk_group, data = gse2034_results)
 
-# Plot
+# 1.6 Plot
 
 ggsurvplot(km_fit.gse2034, 
            data = gse2034_results, 
@@ -68,6 +70,8 @@ ggsurvplot(km_fit.gse2034,
 gse2034_results <- gse2034_results %>%
   mutate(pred_z = scale(.pred_linear_pred))
 
+# 1.7 Divides time group into less and more than 70 months since if thsi division is not made the proportional hazards assumption is not met
+
 gse2034_split <- survSplit(
   formula = Surv(EVENT_MON, EVENT_STAT) ~ ., 
   data = gse2034_results,
@@ -76,17 +80,16 @@ gse2034_split <- survSplit(
   id = "patient_id"
 )
 
-# Run Cox again
+# 1.8 Run Cox again
 
 gse2034_split$risk_group <- relevel(gse2034_split$risk_group, ref = "Low Risk")
 
 
 summary_gse2034 <- summary(coxph(Surv(EVENT_MON,  EVENT_STAT) ~ risk_group * strata(time_group), data = gse2034_split))
 
+# 2.- Metric results ------------------------------------------------------
 
-library(timeROC)
-
-# Area under the curve per time
+# 2. 1 Area under the curve per time
 
 res_auc.gse2034 <- timeROC(T = gse2034_results$EVENT_MON,
                            delta = gse2034_results$ EVENT_STAT,
@@ -95,7 +98,7 @@ res_auc.gse2034 <- timeROC(T = gse2034_results$EVENT_MON,
                            times = c(12, 36, 60, 120), # 3, 5, and 10 years
                            iid = TRUE)
 
-# 6.9.2 Table with confidence interval and z stat and estimated p val
+# 2.1.2 Table with confidence interval and z stat and estimated p val
 
 auc_ci.gse2034 <- data.frame(
   AUC  = res_auc.gse2034$AUC,
@@ -109,7 +112,7 @@ auc_ci.gse2034 <- data.frame(
     p_value = 2 * (1 - pnorm(abs(z_stat)))
   )
 
-# 3.1.1.3 Text
+# 2.2 Text
 
 for (i in 1:5) {
   
@@ -117,7 +120,7 @@ for (i in 1:5) {
   
 }
 
-# View the AUC values
+# 2.3 View the AUC values
 auc_gse2034 <- res_auc.gse2034$AUC 
 print(auc_gse2034)
 
@@ -126,6 +129,8 @@ gse2034_results <-
   gse2034_results %>% 
   mutate(EVENT_STAT = factor(EVENT_STAT))
 
+# 2.4 Object to later plot ROC curves
+
 global_roc.gse2034 <- roc_curve(gse2034_results,
                                 EVENT_STAT,
                                 .pred_linear_pred
@@ -133,7 +138,7 @@ global_roc.gse2034 <- roc_curve(gse2034_results,
   mutate(label = "GSE2034")
 
 
-# 3.2 Combine all time points into a long dataframe
+# 2.4.2 Combine all time points into a long dataframe
 
 plot_roc.gse2034 <- map_df(c(12, 36, 60, 120), function(i) { # This functions as a for loop
   time_label <- paste0("t=", i)
@@ -147,7 +152,7 @@ plot_roc.gse2034 <- map_df(c(12, 36, 60, 120), function(i) { # This functions as
 })
 
 
-# 3.3 Labels for faceted plot
+# 2.4.3 Labels for faceted plot
 
 facet_labels.gse2034 <- data.frame(
   Time = factor(c(12, 36, 60, 120)),
@@ -172,9 +177,9 @@ ggplot(plot_roc.gse2034, aes(x = FP, y = TP)) +
             size = 4, fontface = "bold")
 
 
+# 3.- Cox models  ----------------------------------------------------------
 
-
-# Multivariate regression cox with clinical data
+# 3.1 Asigning the correspondant metadata to the tested patients
 
 proof_genes_pt.gse2034.cox <- 
   proof_genes_pt.gse2034 %>% 
@@ -193,6 +198,8 @@ proof_genes_pt.gse2034.cox <-
   ) %>% 
   na.omit()
 
+# 3.1.2 Once again split to test the cox with score as a continuous variable and not as a divided low and high risk
+
 gse2034_split.cox <- survSplit(
   formula = Surv(EVENT_MON, EVENT_STAT) ~ ., 
   data = proof_genes_pt.gse2034.cox,
@@ -201,20 +208,20 @@ gse2034_split.cox <- survSplit(
   id = "patient_id"
 )
 
-# 2. Fit the model with the interaction
+# 3.2 Fit the model with the interaction
 
 cox_model.gse2034 <- coxph(
   Surv(tstart, EVENT_MON, EVENT_STAT) ~ SCORE:strata(time_group), 
   data = gse2034_split.cox
 )
 
-
-cox_model.gse2034 <- coxph(surv_obj ~ SCORE:strata(time_group), 
-                           data = gse2034_split.cox) 
+# 3.3 Tidy
 
 independent_prog.gse2034 <- 
   cox_model.gse2034 %>% 
   tidy(exponentiate = TRUE, conf.int = TRUE)
+
+# 3.3.2 Clean names for table
 
 supplementary_table.gse2034 <- independent_prog.gse2034 %>%
   mutate(
@@ -232,27 +239,15 @@ supplementary_table.gse2034 <- independent_prog.gse2034 %>%
   dplyr::select(Feature, `Hazard Ratio (HR)`, `95% Confidence Interval`, `p-value`) %>%
   arrange(`Hazard Ratio (HR)`)
 
+# 3.3.3 Table
+
 flextable(supplementary_table.gse2034) %>%
   autofit() 
 
 
-num_param_compare_gse <- c(1:2)
+# 3.4 Forest plot ignoring values that tend to infinite
 
-cat(paste0("The signature got a C-score of ", round(c_index_results.2034$concordance, 2)),
-    paste0("an HR of ", round(summary_gse2034$coefficients[2], 2), " (CI 95% of ", round(summary_gse2034$conf.int[3], 2), " - ", round(summary_gse2034$conf.int[4], 2), " pval ", summary_gse2034$coefficients[5], ")"),
-    paste0("AUC at 3 years of ", round(auc_gse2034[1], 2), " at 5 years of ", round(auc_gse2034[2], 2), " and at 6 years of "),
-    paste0("As an independence factor it has an HR of ", round(independent_prog.gse2034$estimate[independent_prog.gse2034$term == "SCORE"], 2), " (CI 95% of ", round(independent_prog.gse2034$conf.low[independent_prog.gse2034$term == "SCORE"], 2), " - ", round(independent_prog.gse2034$conf.high[independent_prog.gse2034$term == "SCORE"], 2), " pval of ", independent_prog.gse2034$p.value[independent_prog.gse2034$term == "SCORE"], ")"),
-    sep = ". "
-)
-
-
-
-
-
-
-# 4.5 Forest plot ignoring values that tend to infinite
-
-cox_p_gse2034 <-  independent_prog.gse2034[num_param_compare_gse, ] %>%
+cox_p_gse2034 <-  independent_prog.gse2034 %>%
   filter(estimate > 0.0001,
          conf.high < 100) %>%
   mutate(
@@ -283,9 +278,9 @@ cox_p_gse2034 <-  independent_prog.gse2034[num_param_compare_gse, ] %>%
 
 
 
-# 7.- Other scores --------------------------------------------------------
+# 5.- Other scores --------------------------------------------------------
 
-# 7.1 Brier score
+# 5.1 Brier score
 
 eval_results.gse2034 <- final_fit %>%
   augment(new_data = proof_genes_pt.gse2034, eval_time = c(36, 60, 120)) 
@@ -295,7 +290,7 @@ performance.gse2034 <- eval_results.gse2034 %>%
 
 print(performance.gse2034)
 
-# 7.2 Martingale and Schofeild residuals
+# 5.2 Martingale and Schofeild residuals
 
 
 
