@@ -94,5 +94,18 @@ Runs the Boruta feature selection algorithm for signature creation
 
 ### 5. Validation
 
-> **Section Workflow:** Subdivided into the main model (`4.1`) and downstream analyses (`4.2`). This section automatically adapts to whichever file you ran back in Section 3, so ensure your active global objects match your intended analysis (Survival vs. Recurrence).
+> **Section Workflow:** This is one of the more complex sections. It is suvbdivided into 3 sections corresponding to the 3 external validation sets (**GSE2034** `5.1 GSE2034`, **GSE96058** 5.2 GSE96058, **TCGA** `5.3 TCGA`). Each section is divided into 2 subsections which correspond to the data preparation and the model testing.
 
+> * The workflow depends on survival or recurrence analysis
+>   * On survival run `5.2 GSE96058` and `5.3 TCGA`. The latter with specifications given in its assigned section.
+>   * On recurrence run `5.1 GSE2034` and `5.3 TCGA`. Once againthe latter with specifications given in its assigned section.
+
+**IMPORTANT FOR ALL 3 CASES IN DATA PREPARATION:** The only external object is `proof_genes` created on folder `3. Prepare_linreg_ER/3.1 Prepare_linreg_ER_rec_global.R`. If all genes on `proof_genes` can be found on the processed database, **Section 4.3 (it is the same section in all 3 validation sets)** will output "All genes in the signature are on (Name of cohort)", if not, the same section will output how many genes are missing as well as which ones are those missing genes. In both cases an object with all the common genes between the `proof_genes` object and the validation data base is created (independently of it shares all or only a few) called `common_genes_meta.` with the dot followed by the name of the database in undercase (example `common_genes_meta.tcga`). If the output is the error stating that there are missing genes the workflow consists on returning to the utilized `3. Signature Preparation` subfolder and inserting the `common_genes_meta.` into **Line 16 (Section 1.2)** and reruning the workflow from there. If instead it outpus the message stating all genes are found, one can continue with the workflow normally.
+
+**Output on all 3 cases of data preparation:** All preparation files output an object called `proof_genes_pt.` with the dot followed by the database name in underscore (`proof_genes_pt.tcga`, `proof_genes_pt.gse2034` and `proof_genes_pt.gse96058`). This object same as with `proof_genes_pt` from `3. Signature Preparation` consists on the patients on rows and scaled and centered genes on columns as well ad the outcome variables which are ignored to the model because of tidymodels recipe specification given at `4. Cox Regression/4.1 Cox_regression_global.R`. It also outputs metadata in differing named objects specified in each subsection
+
+#### `5.1 GSE2034`
+##### `5.1.1 GSE2034_prep`
+* **Purpose:** Download, untar and read cel files followed by metadata preprocessing and count data preprocessing and finally prepares the object used for testing the signature. GSE2034 was only used for recurrence pipeline
+* **Data procesing:** RMA normalization, anotation, duplicate gene management. Creation of `proof_genes_pt.gse2034` and scaling and centering of its gene counts.
+* **Other output:** The other importatn output used in subsequent files is `metadata.gse.2034_er_pos`
