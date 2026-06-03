@@ -130,6 +130,28 @@ Runs the Boruta feature selection algorithm for signature creation
 ##### `5.1.2 Val_Lin_GSE2034.R`
 * **Purpose:** Test on this database the trained model. Obtain both results (C-index, AUC) and model controls (Schonfeld and Martingale residuals). Also run tests of Wilcoxon comparing score between vital status on different charateristics and cox model treatment interaction.
 * **Function:** Once again if everything was ran as stated the script should run smoothly although on **Section 4.5 (Lines 348 - 362)** may be changed to observe different parameters
-* **Results and outputs:** The main results are found in **line 87 (Section 2.6)** for C-index under the object `c_index_summary.gse96058`, **line 114 (Section 2.6.2)** under the object `auc_ci.gse96058` for AUC, for the division into high and low risk groups under `summary_gse96058` on **line 77 (Section 2.4)**, for the multivariate Cox on **line 260 (Section 3.2)** under `independent_prog.gse96058`. On **Section 4.5** the objective is to apply the kruskal wallis test, change **Line 352 and 353** to the parameter to be evaluated (HORMONE, CHEMO or PAM50). 
+* **Results and outputs:** The main results are found in **line 87 (Section 2.6)** for C-index under the object `c_index_summary.gse96058`, **line 114 (Section 2.6.2)** under the object `auc_ci.gse96058` for AUC, for the division into high and low risk groups under `summary_gse96058` on **line 77 (Section 2.4)**, for the multivariate Cox on **line 260 (Section 3.2)** under `independent_prog.gse96058`. On **Section 4.5** the objective is to apply the wilcoxon test, change **Line 352 and 353** to the parameter to be evaluated (HORMONE, CHEMO or PAM50). Finally **Line 410** outputs the cox model interaction between score and treatment.
   * Other output objects are needed for later plotting mainly `plot_roc.gse96058`, `facet_labels.gse96058`, `global_roc.gse96058` and `cox_p_gse96058`, `score_subtype_gse96058`, `score_tx_gse96058`.
 
+#### `5.3 TCGA`
+
+> **Section summary:** This is the one that requires most atention since TCGA functions as both survival and recurrence in the end of the preparation spetial atention should be given.
+
+##### `5. Validation/5.3 TCGA/5.3.1 TCGA_prep.R`
+* **Purpose:** Download files, followed by metadata and count data preprocessing, finally prepares the object used for testing the signature. TCGA was  used for both recurrence and survival pipeline
+* **Data procesing:** Log 2 transformation, anotation, management of duplicate genes. Creation of `proof_genes_pt.tcga` and scaling and centering of its gene counts.
+* **Other output:** The other important output used in subsequent files is `  refined_data_unique`.
+> **Note:** In the git the lines that correspond to downloading the data are annotated as comment
+**IMPORTANT USER INTERACTION:** To change between survival and recurrene analysis in **Lines 290 - 293 (Section 5.5)** change the selected and event objects to *SURVIVAL* and *SURVIVAL_MON*, for recurrence in those same lines change to *RECURRENCE*¨and *RECURRENCE_MON*. Also extremely important to change  **Line 307** to thedesired outcome since that determines if the recurrence filtered is applied or not. When running this script it outputs a message stating which outcome is registered in **Line 307**
+
+##### `5. Validation/5.3 TCGA/5.3.2 Val_Lin_TCGA.R`
+* **Purpose:** Test on this database the trained model. Obtain both results (C-index, AUC) and model controls (Schonfeld and Martingale residuals). Also run tests of Wilcoxon comparing score between vital status on different charateristics and cox model treatment interaction.
+* **Function:** If everything was ran as stated the script should run smoothly 
+* **Results and outputs:** The main results are found in **line 84 (Section 2.8)** for C-index under the object `c_index_summary.tcga`, **line 111 (Section 3.1.1.2)** under the object `auc_ci.tcga` for AUC, for the division into high and low risk groups under `summary_tcga` on **line 73 (Section 2.6)**, for the multivariate Cox on **line 244 (Section 4.3)** under `independent_prog.tcga`. On this script the wilcoxon test is done on different lines dor different parameters so no changes should be made. **Line 357 (Section 5.2)** for intrinsic subtype comparison and **Line 380 (Section 5.2.2) for the different treatment varieties. Moroever **Line 451 (Section 5.4)** is the cox model interaction between score and treatment.
+  * Other output objects are needed for later plotting mainly `plot_roc.tcga`, `facet_labels.tcga`, `global_roc.tcga` and `cox_p_tcga`, `score_subtype_tcga`, `score_tx_tcga`.
+ 
+ ---
+
+ ### 6. Enrichment
+
+ > **Section summary:** This section consists on differential expresison and enrichment analysis. Its sibdivided into 2 sections, the first is for the enrichment of the signatures and the second is for the analysis comparing groups of the misclassification analysis
