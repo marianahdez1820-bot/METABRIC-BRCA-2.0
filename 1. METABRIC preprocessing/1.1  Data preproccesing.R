@@ -95,13 +95,13 @@ metadata.ER_POS <- metadata %>%
   as.data.frame() %>% 
   filter(ER_IHC == "Positve")  # Keep only ER+ patients
 
-
-# 2.5.1 Complete metadata only for ER+ useful for recurrence
+# 2.5.1 Complete metadata only for ER+ useful for recurrence (min 2 montths, max 180 months)
 
 metadata.ER_POS_REC <- metadata.ER_POS %>% 
   as.data.frame() %>% 
   mutate(EVENT_STAT = as.numeric(RECURR_STAT),
-         EVENT_MON = as.numeric(RFS_MONTHS)) 
+         EVENT_MON = as.numeric(RFS_MONTHS)) %>% 
+  filter(EVENT_MON <= 180 & EVENT_MON >= 2) 
 
 # 2.5.2 Complete metadata only for ER+ patients who DIED OF BRCA or are alive (useful for survival)
 
