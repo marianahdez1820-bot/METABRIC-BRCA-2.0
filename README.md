@@ -100,12 +100,36 @@ Runs the Boruta feature selection algorithm for signature creation
 >   * On survival run `5.2 GSE96058` and `5.3 TCGA`. The latter with specifications given in its assigned section.
 >   * On recurrence run `5.1 GSE2034` and `5.3 TCGA`. Once againthe latter with specifications given in its assigned section.
 
+* **Points of user interaction in all 3 databases:** On **Line 33 (On all 3 Validaiton scripts)** change `true_cut$cutpoint$cutpoint` to `median(.pred_linear_pred)` (both found as coments on the same line) to change cutoff methods as described in the paper.
+
 **IMPORTANT FOR ALL 3 CASES IN DATA PREPARATION:** The only external object is `proof_genes` created on folder `3. Prepare_linreg_ER/3.1 Prepare_linreg_ER_rec_global.R`. If all genes on `proof_genes` can be found on the processed database, **Section 4.3 (it is the same section in all 3 validation sets)** will output "All genes in the signature are on (Name of cohort)", if not, the same section will output how many genes are missing as well as which ones are those missing genes. In both cases an object with all the common genes between the `proof_genes` object and the validation data base is created (independently of it shares all or only a few) called `common_genes_meta.` with the dot followed by the name of the database in undercase (example `common_genes_meta.tcga`). If the output is the error stating that there are missing genes the workflow consists on returning to the utilized `3. Signature Preparation` subfolder and inserting the `common_genes_meta.` into **Line 16 (Section 1.2)** and reruning the workflow from there. If instead it outpus the message stating all genes are found, one can continue with the workflow normally.
 
 **Output on all 3 cases of data preparation:** All preparation files output an object called `proof_genes_pt.` with the dot followed by the database name in underscore (`proof_genes_pt.tcga`, `proof_genes_pt.gse2034` and `proof_genes_pt.gse96058`). This object same as with `proof_genes_pt` from `3. Signature Preparation` consists on the patients on rows and scaled and centered genes on columns as well ad the outcome variables which are ignored to the model because of tidymodels recipe specification given at `4. Cox Regression/4.1 Cox_regression_global.R`. It also outputs metadata in differing named objects specified in each subsection
 
 #### `5.1 GSE2034`
+
 ##### `5.1.1 GSE2034_prep`
 * **Purpose:** Download, untar and read cel files followed by metadata preprocessing and count data preprocessing and finally prepares the object used for testing the signature. GSE2034 was only used for recurrence pipeline
 * **Data procesing:** RMA normalization, anotation, duplicate gene management. Creation of `proof_genes_pt.gse2034` and scaling and centering of its gene counts.
-* **Other output:** The other importatn output used in subsequent files is `metadata.gse.2034_er_pos`
+* **Other output:** The other important output used in subsequent files is `metadata.gse.2034_er_pos`.
+> **Note:** In the git the lines that correspond to downloading the data are annotated as comment 
+
+##### `5.1.2 Val_Lin_GSE2034.R`
+* **Purpose:** Test on this database the trained model. Obtain both results (C-index, AUC) and model controls (Schonfeld and Martingale residuals)
+* **Function:** Once again if everything was ran as stated the script should run smoothly
+* **Results and outputs:** The main results are found in **line 17 (Section 1.3)** for C-index under the object `c_index_summary.gse2034`, **line 97 (Section 2.1.2)** under the object `auc_ci.gse2034` for AUC, for the division into high and low risk groups under `summary_gse2034` on **line 82 (Section 1.8)**, and finally for the cox with the 70 months division on **line 214 (section 3.3)** under `independent_prog.gse2034`. Other output objects are needed for later plotting mainly `plot_roc.gse2034`, `facet_labels.gse2034`, `global_roc.gse2034` and `cox_p_gse2034`.
+
+#### `5.2 GSE96058`
+
+##### `5. Validation/5.2 GSE96058/5.2.1 GSE96058_prep.R`
+* **Purpose:** Download files, followed by metadata and count data preprocessing, finally prepares the object used for testing the signature. GSE96058 was only used for survival pipeline
+* **Data procesing:** Anotation, duplicate gene management. Creation of `proof_genes_pt.gse96058` and scaling and centering of its gene counts.
+* **Other output:** The other important output used in subsequent files is `metadata.gse96058_er_pos`.
+> **Note:** In the git the lines that correspond to downloading the data are annotated as comment
+
+##### `5.1.2 Val_Lin_GSE2034.R`
+* **Purpose:** Test on this database the trained model. Obtain both results (C-index, AUC) and model controls (Schonfeld and Martingale residuals). Also run tests of Wilcoxon comparing score between vital status on different charateristics and cox model treatment interaction.
+* **Function:** Once again if everything was ran as stated the script should run smoothly although on **Section 4.5 (Lines 348 - 362)** may be changed to observe different parameters
+* **Results and outputs:** The main results are found in **line 87 (Section 2.6)** for C-index under the object `c_index_summary.gse96058`, **line 114 (Section 2.6.2)** under the object `auc_ci.gse96058` for AUC, for the division into high and low risk groups under `summary_gse96058` on **line 77 (Section 2.4)**, for the multivariate Cox on **line 260 (Section 3.2)** under `independent_prog.gse96058`. On **Section 4.5** the objective is to apply the kruskal wallis test, change **Line 352 and 353** to the parameter to be evaluated (HORMONE, CHEMO or PAM50). 
+  * Other output objects are needed for later plotting mainly `plot_roc.gse96058`, `facet_labels.gse96058`, `global_roc.gse96058` and `cox_p_gse96058`, `score_subtype_gse96058`, `score_tx_gse96058`.
+
