@@ -14,18 +14,18 @@ p1 <-  ggsurvplot(fit_km,
            font.legend.labs = 12,
            xlab = "Time (months)",
            
-           xlim = c(0, 220),         # Zoom in
-           break.time.by = 50,      # X axis breaks
-           ggtheme = theme_classic(), # ggplot2 theme
+           xlim = c(0, 220),         
+           break.time.by = 50,      
+           ggtheme = theme_classic(), 
            
-           linewidth = 3,                 # Line size
+           linewidth = 3,             
            palette = c("#c380d3", "#ff89d4"),
 )
 
 
 p2 <- ggsurvplot(km_fit.gse2034, 
                  data = gse2034_results, 
-                 pval = FALSE,              # Changed to FALSE
+                 pval = FALSE,              
                  risk.table = TRUE,
                  risk.table.fontsize = 3,
                  
@@ -63,25 +63,35 @@ p3 <- ggsurvplot(km_fit.tcga,
            font.legend.labs = 14,
            xlab = "Time (months)",
            
-           xlim = c(0, 170),         # Zoom in
-           break.time.by = 50,      # X axis breaks
-           ggtheme = theme_classic(), # ggplot2 theme
+           xlim = c(0, 170),        
+           break.time.by = 50,       
+           ggtheme = theme_classic(), 
            
-           linewidth = 3,                 # Line size
-           palette = c("#E7B800", "#2E9FDF"), # Custom color palette
+           linewidth = 3,                 
+           palette = c("#E7B800", "#2E9FDF"), 
            
 )
 
 
 
-# Plots into a list
+
+# list
 
 plot_list <- list(p1, p2, p3)
 
-# Arrange them in a grid 
+# add the tags directly to the curve portion of each object
+
+p1$plot <- p1$plot + labs(tag = "A") + theme(plot.tag = element_text(face = "bold", size = 18))
+p2$plot <- p2$plot + labs(tag = "B") + theme(plot.tag = element_text(face = "bold", size = 18))
+p3$plot <- p3$plot + labs(tag = "C") + theme(plot.tag = element_text(face = "bold", size = 18))
+
+# tagged objects
+
+plot_list <- list(p1, p2, p3)
+
+#  Arrange and print 
 res <- arrange_ggsurvplots(plot_list, 
                            print = TRUE, 
                            ncol = 3, 
                            nrow = 1, 
                            risk.table.height = 0.22)
-
