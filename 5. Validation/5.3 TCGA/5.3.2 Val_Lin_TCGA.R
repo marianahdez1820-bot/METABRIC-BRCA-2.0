@@ -229,7 +229,7 @@ proof_genes_pt.tcga.cox <-
 
 # 4.2 Actual cox model with parameters to evaluare
 
-cox_model.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH + RADIO + NEO + TARG_TX, strata(PAM50) + strata(HER2) + strata(HIST), data = proof_genes_pt.tcga.cox)
+cox_model.tcga <- coxph(surv_obj ~ SCORE + AGE + LYMPH + RADIO + NEO + TARG_TX + strata(PAM50) + strata(HER2) + strata(HIST), data = proof_genes_pt.tcga.cox)
 
 summary(coxph(surv_obj ~ AGE + LYMPH + SCORE  ,  data = proof_genes_pt.tcga.cox))
 
