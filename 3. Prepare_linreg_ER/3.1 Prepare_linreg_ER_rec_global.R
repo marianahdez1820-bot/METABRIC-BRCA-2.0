@@ -51,10 +51,10 @@ proof_genes_pt <-
     type  = "right"))
 
 train_data <- 
-  proof_genes_pt[rownames(proof_genes_pt) %in% train_surv.id, ]
+  proof_genes_pt[rownames(proof_genes_pt) %in% train_rec.id, ]
 
 test_data <- 
-  proof_genes_pt[rownames(proof_genes_pt) %in% test_surv.id, ] 
+  proof_genes_pt[rownames(proof_genes_pt) %in% test_rec.id, ] 
 
 
 
