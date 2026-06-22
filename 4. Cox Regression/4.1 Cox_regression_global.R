@@ -10,30 +10,6 @@ library(flextable)
 # Its made so that the modifications have to be done on preprocessing so even if the
 # thing to be studied is recurrence the object will stay as EVENT and EVENT_MON
 
-
-# 1.- Split ---------------------------------------------------------------
-
-
-set.seed(123)
-
-# 1.1 Split
-
-split <- initial_split(
-  proof_genes_pt,
-  prop = 0.8,
-  strata = EVENT_STAT  # maintain proportions
-)
-
-# > split
-# <Training/Testing/Total>
-#   <1186/298/1484>
-
-# 1.2 Asign to objects for training and testing
-
-train_data <- training(split)
-test_data  <- testing(split)
-
-
 # 2.- Preparing recipe and model ------------------------------------------
 
 # 2.1 Recipe
