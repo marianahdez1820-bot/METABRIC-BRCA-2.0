@@ -10,6 +10,7 @@ library(flextable)
 # Its made so that the modifications have to be done on preprocessing so even if the
 # thing to be studied is recurrence the object will stay as EVENT and EVENT_MON
 
+
 # 2.- Preparing recipe and model ------------------------------------------
 
 # 2.1 Recipe
@@ -223,6 +224,20 @@ concordance <- concordance(
   data = eval_df
 )
 
+c_index_summary <- data.frame(
+  C_Index  = concordance$concordance,
+  SE       = sqrt(concordance$var),
+  data_set = "METABRIC"
+) %>%
+  mutate(
+    conf_int_low95  = C_Index - (1.96 * SE),
+    conf_int_high95 = C_Index + (1.96 * SE),
+    z_stat  = (C_Index - 0.5) / SE,
+    p_value = 2 * (1 - pnorm(abs(z_stat)))
+  )
+
+print(c_index_summary)
+
 
 
 # 7.- Area under de curve (AUC) per time --------------------------------------------------------
@@ -238,6 +253,22 @@ time_roc <- timeROC(
   times = c(12, 36, 60, 72, 120),  # 1y, 3y, 5y, 6y, 10y
   iid = TRUE
 )
+
+# 2.6.2 Table with confidence interval and z stat and estimated p val
+
+auc_ci <- data.frame(
+  AUC  = time_roc$AUC,
+  SE   = time_roc$inference$vect_sd_1,
+  time = time_roc$times,
+  data_set = "METABRIC"
+) %>% 
+  mutate(
+    conf_int_low95  = AUC - (1.96 * SE),
+    conf_int_high95 = AUC + (1.96 * SE),
+    z_stat  = (AUC - 0.5) / SE,
+    p_value = 2 * (1 - pnorm(abs(z_stat)))
+  )
+
 
 test_data <- 
   test_data %>% 
@@ -381,6 +412,7 @@ supplementary_table <- independent_prog %>%
                             "PAM50Her2"          ~ "PAM50 Her2-enriched",
                             "PAM50claudin-low"   ~ "PAM50 Claudin-low",
                             "PAM50Normal"        ~ "PAM50 Normal-like",
+                            "PAM50NC"        ~ "PAM50 Not classified",
                             "RADIOYES" ~ "Radiotherapy (Yes)",
                             default = term
     ),
@@ -453,6 +485,7 @@ cox_p_metabric <- independent_prog[num_param_compare, ] %>%
       "INTCLUST8"          ~ "IntClust 8",
       "INTCLUST9"          ~ "IntClust 9",
       "MENOPre" ~ "Premenopause",
+      "RADIOYES" ~ "Radiotherapy (Yes)",
       default = term 
     ),
     term = reorder(term, estimate),
@@ -466,8 +499,8 @@ cox_p_metabric <- independent_prog[num_param_compare, ] %>%
   geom_vline(xintercept = 1, linetype = "dashed") +
   scale_x_log10() +
   labs(x = "Hazard Ratio (log scale)", y = "Clinical & Molecular Features", color = "Significance (p < 0.05)") +
-  theme_classic(base_size = 17) +
-  ggtitle("Multivariate Cox: Recurrance METABRIC") +
+  theme_classic(base_size = 15) +
+  ggtitle("Multivariate Cox: Recurrence METABRIC") +
   theme(plot.title = element_text(hjust = 0.5),
         legend.position = "none",
         ) + 
