@@ -193,6 +193,6 @@ proof_genes_pt.gse2034 <-
 
 
 
-
 proof_genes_pt.gse2034 <- proof_genes_pt.gse2034 %>% 
-  mutate(across(-c(EVENT_MON, EVENT_STAT, surv_obj), scale))
+    mutate(across(-c(EVENT_MON, EVENT_STAT, surv_obj), ~ as.vector(scale(.x))))
+  
