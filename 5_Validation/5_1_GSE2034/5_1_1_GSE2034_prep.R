@@ -13,14 +13,14 @@ library(hgu133a.db)
 
 # 1.1 Get supplementary files
 
-# getGEOSuppFiles("GSE2034", baseDir = "D:/gse2034")
+# getGEOSuppFiles("GSE2034", baseDir = "")
 
 # 1.1.2 Untar files
-#untar("D:/gse2034/GSE2034/GSE2034_RAW.tar", exdir = "D:/gse2034/GSE2034/")
+#untar("D:/gse2034/GSE2034/GSE2034_RAW.tar", exdir = "")
 
 # 1.1.3 Listing .cel files
 
-cel_files <- list.celfiles("D:/gse2034/GSE2034/", full.names = TRUE, listGzipped = TRUE)
+cel_files <- list.celfiles("", full.names = TRUE, listGzipped = TRUE)
 
 # 1.1.4 Reading in cel files
 
@@ -30,7 +30,7 @@ raw_data <- pre_raw_data
 
 # 1.2 metadata_GSE2034 
 
-pre_metadata <- read.delim("C:/R/METABRIC/Validation/GSE2034/Metadatos/GSE2034_metadata", sep = ",")
+pre_metadata <- read.delim("", sep = ",")
 metadata_gse.2034 <- pre_metadata
 
 #> pData of raw_data initially only contains the id for the counts and an index
