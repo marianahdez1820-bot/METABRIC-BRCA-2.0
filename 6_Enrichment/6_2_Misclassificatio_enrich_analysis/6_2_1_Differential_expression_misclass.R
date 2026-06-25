@@ -11,9 +11,6 @@ col_data <- ml_metadata %>%
                 1,
                 0))) %>% 
   filter(!(BIAS == 1 & EVENT_STAT == 0)) %>%
-  # mutate(BIAS = factor(ifelse(EVENT_STAT == 1,
-  #                      1,
-  #                      0))) %>%
   dplyr::select(PATIENT_ID, BIAS) %>% # Create only the object to use for Limma
   column_to_rownames("PATIENT_ID")
 
