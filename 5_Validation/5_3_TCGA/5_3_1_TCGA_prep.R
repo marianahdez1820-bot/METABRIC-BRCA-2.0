@@ -27,7 +27,7 @@
   
   # 1.2 Prepare data for usage
   
-  #tcga_brca_data <- GDCprepare(tcga_rna, directory = "D:/tcga/GDCdata")
+  #tcga_brca_data <- GDCprepare(tcga_rna, directory = "")
   
   # 1.3 Count matrix
   
