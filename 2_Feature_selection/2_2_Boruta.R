@@ -6,7 +6,7 @@ library(ranger)
 
 # 2.- Metadata Preparation (Filtering for ER+) ------------------
 
-boruta_metadata <- metadata.ER_POS_SURV %>% 
+boruta_metadata <- metadata_surv_train  %>% 
   as.data.frame() %>% 
   drop_na(EVENT_STAT, EVENT_MON) %>% # Eliminate rows with NAs
   dplyr::select(PATIENT_ID, EVENT_STAT, EVENT_MON) # Select columns to create outcome and to identify patients
