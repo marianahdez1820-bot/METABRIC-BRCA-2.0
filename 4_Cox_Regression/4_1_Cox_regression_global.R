@@ -6,16 +6,16 @@ library(survival)
 library(timeROC)
 library(flextable)
 
-# Initiasurvival# Initial object late_genes.patients created in preprocessing
+# InitiaRecurrence# Initial object late_genes.patients created in preprocessing
 # Its made so that the modifications have to be done on preprocessing so even if the
-# thing to be studied is recurrence the object will stay as EVENT and EVENT_MON
+# thing to be studied is Recurrence the object will stay as EVENT and EVENT_MON
 
 
 # 2.- Preparing recipe and model ------------------------------------------
 
 # 2.1 Recipe
 
-lr_rec <- recipe(surv_obj ~ ., data = train_data) %>% # Survival object created in preprocessing for linear regression
+lr_rec <- recipe(surv_obj ~ ., data = train_data) %>% # Recurrence object created in preprocessing for linear regression
   update_role(EVENT_MON, EVENT_STAT, new_role = "non_predictor") %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_zv(all_predictors()) %>% # Eliminates variables with a single value
@@ -150,19 +150,23 @@ test_data$risk_score <- test_pred$.pred_linear_pred
 
 # 5.2.2 Dividing the groups by median so as to establish a high and low risk and create a column
 
-test_data$risk_group <- as.factor(ifelse(
-  test_data$risk_score < median(train_data2$risk_score),
-  "High",
-  "Low"
-)
-)
 
-test_data$risk_group <- as.factor(ifelse(
-  test_data$risk_score < true_cut$cutpoint[1,1],
-  "High",
-  "Low"
-)
-)
+test_data <- 
+  test_data %>% 
+  mutate(
+    risk_group =  factor(ifelse(
+      risk_score < true_cut$cutpoint[1,1],
+      "High",
+      "Low"
+    )
+    ),
+    risk_group_median = factor(ifelse(
+      risk_score < median(train_data2$risk_score),
+      "High",
+      "Low"
+    )
+    )
+  )
 
 
 
@@ -170,7 +174,7 @@ test_data$risk_group <- relevel(test_data$risk_group, ref = "Low")
 
 # 5.3 Creating kapan meier curve
 
-# 5.3.1 Based on the survival object compare the risk_groups created previously
+# 5.3.1 Based on the Recurrence object compare the risk_groups created previously
 
 fit_km <- survfit(surv_obj ~ risk_group, data = test_data)
 
@@ -181,8 +185,8 @@ ggsurvplot(fit_km,
            pval = TRUE, 
            risk.table = TRUE,
            
-           title = "Survival ER+ METABRIC",
-           ylab = "Survival probability",
+           title = "Recurrence ER+ METABRIC",
+           ylab = "Recurrence probability",
            font.title = 30,
            legend = "bottom",
            font.legend = 22,
@@ -433,7 +437,7 @@ flextable(supplementary_table) %>%
 
 # 9.1 Index number of the parameters to print the evaluation and to graph
 
-num_param_compare <- c(1, 2, 3, 5, 6, 9, 10)
+num_param_compare <- c(1, 2, 3, 4, 6, 7, 10)
 
 # 9.2 Concatenate strings with the respective result
 
